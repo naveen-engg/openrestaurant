@@ -865,8 +865,17 @@ export function KDSClient({ initialStation }: KDSClientProps = {}) {
         onViewModeChange={setViewMode}
       />
       {mutationError && (
-        <div className="px-8 py-3 text-sm bg-red-500/10 text-red-700 border-b border-red-500/20">
-          {mutationError}
+        <div className="px-8 py-3 text-sm bg-amber-500/10 text-amber-900 border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span>{mutationError}</span>
+            <span className="text-xs text-muted-foreground">(Requires staff or admin authentication)</span>
+          </div>
+          <a
+            href="/dashboard/signin"
+            className="text-xs font-semibold px-3 py-1.5 rounded bg-foreground text-background hover:opacity-90 transition-opacity"
+          >
+            Sign In with Admin Credentials &rarr;
+          </a>
         </div>
       )}
       <StationMetrics tickets={stationFiltered} />

@@ -72,17 +72,16 @@ export async function seedDatabase() {
   }
 
   // 2. Store Settings
-  const existingSettings = await sudo.query.StoreSettings.findOne({
-    where: { id: '1' },
+  const existingSettings = await sudo.query.StoreSettings.findMany({
     query: 'id',
-  }).catch(() => null)
+    take: 1,
+  }).catch(() => [])
 
-  if (!existingSettings) {
+  if (existingSettings.length === 0) {
     console.log('Creating default StoreSettings...')
     await sudo.db.StoreSettings.createOne({
       data: {
-        id: '1',
-        storeName: 'Openfront Bistro',
+        name: 'Openfront Bistro',
         currencyCode: 'USD',
         taxRate: '8.75',
         locale: 'en-US',
@@ -304,11 +303,9 @@ export async function seedDatabase() {
   console.log('Password: Password123!')
 }
 
-if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
-  seedDatabase()
-    .then(() => process.exit(0))
-    .catch((err) => {
-      console.error('Seed error:', err)
-      process.exit(1)
-    })
-}
+seedDatabase()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Seed error:', err)
+    process.exit(1)
+  })
