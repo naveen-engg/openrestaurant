@@ -123,6 +123,21 @@ export const MenuItem = list({
       },
     }),
 
+    station: select({
+      type: "string",
+      options: [
+        { label: "Hot Line", value: "hot_line" },
+        { label: "Cold Prep", value: "cold_prep" },
+        { label: "Bar", value: "bar" },
+        { label: "Expo", value: "expo" },
+        { label: "Dessert", value: "dessert" },
+      ],
+      defaultValue: "hot_line",
+      ui: {
+        description: "Kitchen prep station for routing (hot_line, cold_prep, bar, expo, dessert)",
+      },
+    }),
+
     kitchenStation: select({
       type: "string",
       options: [

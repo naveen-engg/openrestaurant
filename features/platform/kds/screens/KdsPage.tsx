@@ -6,8 +6,13 @@
 import React from 'react'
 import { KDSClient } from './KDSClient'
 
-export async function KDSPage() {
-  return <KDSClient />
+interface KdsPageProps {
+  searchParams?: Promise<{ station?: string }> | { station?: string }
+}
+
+export async function KDSPage({ searchParams }: KdsPageProps = {}) {
+  const resolved = searchParams ? await Promise.resolve(searchParams) : {}
+  return <KDSClient initialStation={resolved.station} />
 }
 
 export default KDSPage

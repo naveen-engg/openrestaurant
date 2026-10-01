@@ -62,6 +62,8 @@ interface MenuItem {
   price: string
   available: boolean
   thumbnail?: string | null
+  station?: string | null
+  kitchenStation?: string | null
   category: { id: string; name: string } | null
   modifiers: MenuModifier[]
 }
@@ -70,6 +72,7 @@ interface CartItem {
   menuItem: MenuItem
   quantity: number
   courseNumber: number
+  station: string
   modifierIds: string[]
   specialInstructions: string
 }
@@ -81,7 +84,7 @@ const GET_DATA = gql`
     }
     menuCategories(orderBy: { sortOrder: asc }) { id name }
     menuItems(orderBy: { name: asc }) {
-      id name price available thumbnail
+      id name price available thumbnail station kitchenStation
       category { id name }
       modifiers {
         id name modifierGroup modifierGroupLabel required
@@ -181,6 +184,7 @@ export function POSClient() {
 
   const appendConfiguredItem = (menuItem: MenuItem, modifierIds: string[], instructions = '') => {
     const signature = [...modifierIds].sort().join(':')
+    const defaultStation = menuItem.station || menuItem.kitchenStation || 'hot_line'
     const existing = cart.findIndex(
       (item) =>
         item.menuItem.id === menuItem.id &&
@@ -197,6 +201,7 @@ export function POSClient() {
         menuItem,
         quantity: 1,
         courseNumber: 1,
+        station: defaultStation,
         modifierIds,
         specialInstructions: instructions,
       }])
@@ -273,6 +278,7 @@ export function POSClient() {
           menuItemId: item.menuItem.id,
           quantity: item.quantity,
           courseNumber: item.courseNumber,
+          station: item.station || item.menuItem.station || item.menuItem.kitchenStation || 'hot_line',
           modifierIds: item.modifierIds,
           specialInstructions: item.specialInstructions || null,
         })),
@@ -591,14 +597,19 @@ export function POSClient() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-semibold truncate">{item.menuItem.name}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {formatMoney(
-                              Number(item.menuItem.price || 0) +
-                              item.menuItem.modifiers
-                                .filter((modifier) => item.modifierIds.includes(modifier.id))
-                                .reduce((sum, modifier) => sum + Number(modifier.priceAdjustment || 0), 0)
-                            )} each
-                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatMoney(
+                                Number(item.menuItem.price || 0) +
+                                item.menuItem.modifiers
+                                  .filter((modifier) => item.modifierIds.includes(modifier.id))
+                                  .reduce((sum, modifier) => sum + Number(modifier.priceAdjustment || 0), 0)
+                              )} each
+                            </span>
+                            <span className="text-[9px] uppercase tracking-wider font-mono px-1 py-0.2 rounded bg-muted/80 text-muted-foreground border text-center">
+                              {(item.station || item.menuItem.station || 'hot_line').replace('_', ' ')}
+                            </span>
+                          </div>
                           {item.modifierIds.length > 0 && (
                             <p className="text-[10px] text-muted-foreground truncate">
                               {item.menuItem.modifiers

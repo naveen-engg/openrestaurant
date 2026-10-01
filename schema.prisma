@@ -179,6 +179,7 @@ model MenuItem {
   popular                   Boolean            @default(false)
   prepTime                  Int?               @default(15)
   calories                  Int?
+  station                   String?            @default("hot_line")
   kitchenStation            String?            @default("grill")
   allergens                 Json               @default("[]")
   dietaryFlags              Json               @default("[]")
@@ -319,6 +320,7 @@ model OrderItem {
   price                             Int
   itemNameSnapshot                  String               @default("")
   itemThumbnailSnapshot             String               @default("")
+  station                           String?              @default("hot_line")
   kitchenStationSnapshot            String               @default("")
   menuItemIdSnapshot                String               @default("")
   originalOrderIdSnapshot           String               @default("")

@@ -7,6 +7,7 @@ interface POSOrderItemInput {
   menuItemId: string;
   quantity: number;
   courseNumber?: number;
+  station?: string | null;
   modifierIds?: string[] | null;
   specialInstructions?: string | null;
 }
@@ -61,6 +62,7 @@ export default async function createPOSOrder(
           specialInstructions: item.specialInstructions,
         })),
         courseNumber: Math.max(1, Math.floor(Number(item.courseNumber || 1))),
+        station: item.station || null,
       }))
     ),
     tableIds.length
@@ -126,7 +128,8 @@ export default async function createPOSOrder(
         price: item.unitPrice,
         itemNameSnapshot: item.menuItem.name,
         itemThumbnailSnapshot: item.menuItem.thumbnail || "",
-        kitchenStationSnapshot: item.menuItem.kitchenStation || "expo",
+        station: item.station || item.menuItem.station || item.menuItem.kitchenStation || "hot_line",
+        kitchenStationSnapshot: item.station || item.menuItem.station || item.menuItem.kitchenStation || "hot_line",
         menuItemIdSnapshot: item.menuItem.id,
         modifiersSnapshot: item.modifiers,
         specialInstructions: item.specialInstructions,

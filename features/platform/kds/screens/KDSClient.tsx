@@ -3,13 +3,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { gql, request } from 'graphql-request'
 import { RefreshCw } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-type StatusFilter = 'all' | 'in-progress' | 'ready'
-type LaneFilter = 'all' | 'prep' | 'expediter'
-type Density = 'comfortable' | 'compact'
-type ViewMode = 'tickets' | 'all-day'
+export type StatusFilter = 'all' | 'in-progress' | 'ready'
+export type LaneFilter = 'all' | 'prep' | 'expediter'
+export type Density = 'comfortable' | 'compact'
+export type ViewMode = 'tickets' | 'all-day'
 
-type TicketItem = {
+export type TicketItem = {
   id: string
   name: string
   quantity: number
@@ -19,11 +20,12 @@ type TicketItem = {
   fulfilledAt?: string | null
 }
 
-type KdsTicket = {
+export type KdsTicket = {
   id: string
   status: 'new' | 'in_progress' | 'ready' | 'served' | 'cancelled'
   priority: number
   firedAt?: string | null
+  ticketType?: string | null
   station: { id: string; name: string } | null
   order: {
     id: string
@@ -38,7 +40,7 @@ type KdsTicket = {
   items: TicketItem[]
 }
 
-const GET_KDS_DATA = gql`
+export const GET_KDS_DATA = gql`
   query GetKdsData {
     kitchenStations(where: { isActive: { equals: true } }, orderBy: { displayOrder: asc }) {
       id
@@ -52,6 +54,7 @@ const GET_KDS_DATA = gql`
       id
       status
       priority
+      ticketType
       firedAt
       items
       station { id name }
@@ -69,7 +72,7 @@ const GET_KDS_DATA = gql`
   }
 `
 
-const UPDATE_TICKET_STATUS = gql`
+export const UPDATE_TICKET_STATUS = gql`
   mutation UpdateKitchenTicketStatus($ticketId: String!, $status: String!) {
     updateKitchenTicketStatus(ticketId: $ticketId, status: $status) {
       success
@@ -78,7 +81,7 @@ const UPDATE_TICKET_STATUS = gql`
   }
 `
 
-const FULFILL_TICKET_ITEM = gql`
+export const FULFILL_TICKET_ITEM = gql`
   mutation FulfillKitchenTicketItem($ticketId: String!, $itemId: String!, $fulfilled: Boolean!) {
     fulfillKitchenTicketItem(ticketId: $ticketId, itemId: $itemId, fulfilled: $fulfilled) {
       success
@@ -90,6 +93,30 @@ const FULFILL_TICKET_ITEM = gql`
 const warnMins = 12
 const criticalMins = 20
 
+export function normalizeStation(station?: string | { id?: string; name?: string } | null): string {
+  if (!station) return ''
+  if (typeof station === 'object') {
+    return (station.name || station.id || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
+  }
+  return String(station).toLowerCase().trim().replace(/[\s-]+/g, '_')
+}
+
+export function isExpoStation(station?: string | { id?: string; name?: string } | null): boolean {
+  const s = normalizeStation(station)
+  return s.includes('expo') || s.includes('expediter')
+}
+
+export function isStationMatch(
+  filterStation: string,
+  targetStation?: string | { id?: string; name?: string } | null
+): boolean {
+  if (!filterStation || filterStation === 'all') return true
+  const filterNorm = normalizeStation(filterStation)
+  const targetNorm = normalizeStation(targetStation)
+  if (!targetNorm) return false
+  return targetNorm === filterNorm || targetNorm.includes(filterNorm) || filterNorm.includes(targetNorm)
+}
+
 function getTicketAgeMins(ticket: KdsTicket) {
   const sentAt = ticket.firedAt || ticket.order?.createdAt
   if (!sentAt) return 0
@@ -98,7 +125,9 @@ function getTicketAgeMins(ticket: KdsTicket) {
 
 function getTicketLane(ticket: KdsTicket): LaneFilter {
   const stationName = (ticket.station?.name || '').toLowerCase()
-  if (stationName.includes('expo') || stationName.includes('expediter')) return 'expediter'
+  if (stationName.includes('expo') || stationName.includes('expediter') || ticket.ticketType === 'expediter') {
+    return 'expediter'
+  }
   return 'prep'
 }
 
@@ -117,6 +146,15 @@ function sortTickets(tickets: KdsTicket[]) {
     return getTicketAgeMins(b) - getTicketAgeMins(a)
   })
 }
+
+export const TOAST_STANDARD_STATIONS = [
+  { id: 'all', name: 'All Stations' },
+  { id: 'hot_line', name: 'Hot Line' },
+  { id: 'cold_prep', name: 'Cold Prep' },
+  { id: 'bar', name: 'Bar' },
+  { id: 'dessert', name: 'Dessert' },
+  { id: 'expo', name: 'Expo' },
+]
 
 function KDSHeader({
   now,
@@ -141,7 +179,7 @@ function KDSHeader({
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold">Kitchen Display System</h1>
-            <p className="text-xs text-muted-foreground mt-1">Ticket-first queue • urgent pinned first • sequenced expediter gate enabled</p>
+            <p className="text-xs text-muted-foreground mt-1">Multi-station routing • Toast-style line cook & expo split</p>
           </div>
           <div className="text-right">
             <div className="font-mono text-3xl font-bold tracking-tight">
@@ -182,13 +220,6 @@ function KDSHeader({
             <p className="text-2xl font-bold mt-1 text-red-600">{counts.critical}</p>
           </div>
         </div>
-
-        <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-          <span className="rounded border px-2 py-1 bg-card">1. Order</span>
-          <span className="rounded border px-2 py-1 bg-card">2. Prepare</span>
-          <span className="rounded border px-2 py-1 bg-card">3. Ready / Serve</span>
-          <span className="rounded border px-2 py-1 bg-card">4. Pay</span>
-        </div>
       </div>
     </header>
   )
@@ -205,24 +236,26 @@ function StationTabs({
   stationCounts: Record<string, number>
   onStationChange: (stationId: string) => void
 }) {
-  const allStations = [{ id: 'all', name: 'All Stations' }, ...stations]
-
   return (
     <div className="border-b border-border bg-secondary">
-      <div className="px-8 flex items-center gap-1 overflow-x-auto">
-        {allStations.map((station) => (
-          <button
-            key={station.id}
-            onClick={() => onStationChange(station.id)}
-            className={`px-5 py-3 text-sm whitespace-nowrap border-b-2 transition-all ${
-              activeStation === station.id
-                ? 'border-foreground text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {station.name} <span className="text-xs opacity-80">({stationCounts[station.id] || 0})</span>
-          </button>
-        ))}
+      <div className="px-8 flex items-center gap-1 overflow-x-auto" data-testid="kds-station-tabs">
+        {stations.map((station) => {
+          const isSelected = isStationMatch(activeStation, station.id) || isStationMatch(activeStation, station.name)
+          return (
+            <button
+              key={station.id}
+              data-testid={`station-tab-${station.id}`}
+              onClick={() => onStationChange(station.id)}
+              className={`px-5 py-3 text-sm whitespace-nowrap border-b-2 transition-all ${
+                isSelected
+                  ? 'border-foreground text-foreground font-semibold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {station.name} <span className="text-xs opacity-80">({stationCounts[station.id] ?? 0})</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -248,9 +281,9 @@ function KDSViewControls({
       <div className="flex items-center gap-2 text-xs">
         <span className="uppercase tracking-wider text-muted-foreground">Lane</span>
         {([
-          { id: 'all', label: 'All' },
-          { id: 'prep', label: 'Prep' },
-          { id: 'expediter', label: 'Expediter' },
+          { id: 'all', label: 'All Lanes' },
+          { id: 'prep', label: 'Line Prep' },
+          { id: 'expediter', label: 'Expo Gate' },
         ] as { id: LaneFilter; label: string }[]).map((lane) => (
           <button
             key={lane.id}
@@ -266,44 +299,46 @@ function KDSViewControls({
         ))}
       </div>
 
-      <div className="flex items-center gap-2 text-xs">
-        <span className="uppercase tracking-wider text-muted-foreground">View</span>
-        {([
-          { id: 'tickets', label: 'Tickets' },
-          { id: 'all-day', label: 'All Day' },
-        ] as { id: ViewMode; label: string }[]).map((mode) => (
-          <button
-            key={mode.id}
-            onClick={() => onViewModeChange(mode.id)}
-            className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-              viewMode === mode.id
-                ? 'bg-foreground text-background border-foreground'
-                : 'bg-background border-border text-foreground hover:border-zinc-400'
-            }`}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="uppercase tracking-wider text-muted-foreground">View</span>
+          {([
+            { id: 'tickets', label: 'Tickets' },
+            { id: 'all-day', label: 'All Day' },
+          ] as { id: ViewMode; label: string }[]).map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => onViewModeChange(mode.id)}
+              className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                viewMode === mode.id
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-background border-border text-foreground hover:border-zinc-400'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex items-center gap-2 text-xs">
-        <span className="uppercase tracking-wider text-muted-foreground">Density</span>
-        {([
-          { id: 'comfortable', label: 'Comfortable' },
-          { id: 'compact', label: 'Compact' },
-        ] as { id: Density; label: string }[]).map((mode) => (
-          <button
-            key={mode.id}
-            onClick={() => onDensityChange(mode.id)}
-            className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-              density === mode.id
-                ? 'bg-foreground text-background border-foreground'
-                : 'bg-background border-border text-foreground hover:border-zinc-400'
-            }`}
-          >
-            {mode.label}
-          </button>
-        ))}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="uppercase tracking-wider text-muted-foreground">Density</span>
+          {([
+            { id: 'comfortable', label: 'Comfortable' },
+            { id: 'compact', label: 'Compact' },
+          ] as { id: Density; label: string }[]).map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => onDensityChange(mode.id)}
+              className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                density === mode.id
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-background border-border text-foreground hover:border-zinc-400'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -353,16 +388,18 @@ function StationMetrics({ tickets }: { tickets: KdsTicket[] }) {
   )
 }
 
-function TicketCard({
+export function TicketCard({
   ticket,
   onStatusChange,
   onToggleItem,
   density,
+  activeStation,
 }: {
   ticket: KdsTicket
   onStatusChange: (ticketId: string, status: string) => void
   onToggleItem: (ticketId: string, itemId: string, fulfilled: boolean) => void
   density: Density
+  activeStation: string
 }) {
   const table = ticket.order?.tables?.length
     ? ticket.order.tables.map((t) => t.tableNumber).join(', ')
@@ -374,8 +411,19 @@ function TicketCard({
   const urgent = !!ticket.order?.isUrgent
   const onHold = !!ticket.order?.onHold
 
+  const isExpo = isExpoStation(activeStation) || isExpoStation(ticket.station?.name) || ticket.ticketType === 'expediter'
+
+  // Line cooks only see items assigned to their active station,
+  // while expo station sees the consolidated order ticket with prep status indicators per item.
+  const visibleItems = isExpo
+    ? ticket.items
+    : activeStation === 'all'
+      ? ticket.items
+      : ticket.items.filter((item) => isStationMatch(activeStation, item.station))
+
   return (
     <div
+      data-testid={`kds-ticket-${ticket.id}`}
       className={`rounded-lg border ${density === 'compact' ? 'p-3' : 'p-4'} ${
         urgent
           ? 'border-red-500 bg-red-500/10 shadow-sm shadow-red-500/20'
@@ -390,8 +438,12 @@ function TicketCard({
           <div className="text-xs text-muted-foreground mt-1">
             #{ticket.order?.orderNumber || '—'} • {(ticket.order?.guestCount || 0)} guest{(ticket.order?.guestCount || 0) !== 1 ? 's' : ''} • {(ticket.order?.orderType || '').replace('_', ' ')}
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            {ticket.station?.name || '—'} • {getTicketLane(ticket).toUpperCase()}
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+            <span className="font-semibold text-foreground">{ticket.station?.name || 'Prep'}</span>
+            <span>•</span>
+            <span className="uppercase text-[10px] tracking-wider px-1.5 py-0.5 rounded bg-muted border">
+              {isExpo ? 'EXPO CONSOLIDATED' : getTicketLane(ticket).toUpperCase()}
+            </span>
           </div>
         </div>
         <div className="text-right">
@@ -402,12 +454,14 @@ function TicketCard({
         </div>
       </div>
 
-      <div className={density === 'compact' ? 'space-y-1.5 mb-2' : 'space-y-2 mb-3'}>
-        {(ticket.items || []).map((item) => {
+      {/* Items list */}
+      <div className={density === 'compact' ? 'space-y-1.5 mb-2' : 'space-y-2 mb-3'} data-testid="kds-items-list">
+        {visibleItems.map((item) => {
           const done = item.status === 'fulfilled'
           return (
             <button
               key={item.id}
+              data-testid={`kds-item-${item.id}`}
               onClick={() => onToggleItem(ticket.id, item.id, !done)}
               className={`w-full text-left rounded border px-3 py-2 transition-colors ${
                 done
@@ -416,14 +470,36 @@ function TicketCard({
               }`}
             >
               <div className="flex items-center justify-between">
-                <div className={`text-sm ${done ? 'line-through text-muted-foreground' : ''}`}>
-                  {item.quantity}x {item.name}
+                <div className={`text-sm flex items-center gap-2 ${done ? 'line-through text-muted-foreground' : ''}`}>
+                  {isExpo && (
+                    <span
+                      data-testid={`item-station-tag-${item.id}`}
+                      className="text-[9px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded bg-muted/90 border text-muted-foreground"
+                    >
+                      {item.station.replace('_', ' ')}
+                    </span>
+                  )}
+                  <span>{item.quantity}x {item.name}</span>
                 </div>
-                <div className={`text-[11px] uppercase ${done ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                  {done ? 'Fulfilled' : 'Mark Done'}
+                <div className="flex items-center gap-2">
+                  {isExpo && (
+                    <span
+                      data-testid={`item-status-tag-${item.id}`}
+                      className={`text-[10px] uppercase font-semibold ${
+                        done ? 'text-emerald-700' : item.status === 'in_progress' ? 'text-amber-600' : 'text-blue-600'
+                      }`}
+                    >
+                      {done ? 'Fulfilled' : item.status === 'in_progress' ? 'In Prep' : 'New'}
+                    </span>
+                  )}
+                  <span className={`text-[11px] uppercase ${done ? 'text-emerald-700 font-semibold' : 'text-muted-foreground'}`}>
+                    {done ? 'Done' : 'Mark Done'}
+                  </span>
                 </div>
               </div>
-              {item.notes && density === 'comfortable' && <div className="text-xs italic text-muted-foreground mt-1">{item.notes}</div>}
+              {item.notes && density === 'comfortable' && (
+                <div className="text-xs italic text-muted-foreground mt-1">{item.notes}</div>
+              )}
             </button>
           )
         })}
@@ -469,13 +545,18 @@ function TicketCard({
   )
 }
 
-function AllDayView({ tickets }: { tickets: KdsTicket[] }) {
+function AllDayView({ tickets, activeStation }: { tickets: KdsTicket[]; activeStation: string }) {
+  const isExpo = isExpoStation(activeStation)
   const rows = useMemo(() => {
     const map = new Map<string, { name: string; station: string; qty: number; fulfilled: number; urgentOrders: number }>()
 
     tickets.forEach((ticket) => {
       const urgent = ticket.order?.isUrgent ? 1 : 0
-      ticket.items.forEach((item) => {
+      const items = isExpo || activeStation === 'all'
+        ? ticket.items
+        : ticket.items.filter((item) => isStationMatch(activeStation, item.station))
+
+      items.forEach((item) => {
         const key = `${item.station}::${item.name}`
         const curr = map.get(key) || { name: item.name, station: item.station, qty: 0, fulfilled: 0, urgentOrders: 0 }
         curr.qty += item.quantity
@@ -486,7 +567,7 @@ function AllDayView({ tickets }: { tickets: KdsTicket[] }) {
     })
 
     return Array.from(map.values()).sort((a, b) => b.qty - a.qty)
-  }, [tickets])
+  }, [tickets, activeStation, isExpo])
 
   return (
     <section className="px-8 py-6">
@@ -511,7 +592,7 @@ function AllDayView({ tickets }: { tickets: KdsTicket[] }) {
           {rows.map((row, idx) => (
             <div key={`${row.station}-${row.name}-${idx}`} className="grid grid-cols-12 gap-2 px-4 py-3 border-t text-sm">
               <div className="col-span-4 font-medium">{row.name}</div>
-              <div className="col-span-2 text-muted-foreground capitalize">{row.station}</div>
+              <div className="col-span-2 text-muted-foreground capitalize">{row.station.replace('_', ' ')}</div>
               <div className="col-span-2 text-right font-semibold">{row.qty}</div>
               <div className="col-span-2 text-right text-emerald-700 font-semibold">{row.fulfilled}</div>
               <div className="col-span-2 text-right font-semibold">{Math.max(0, row.qty - row.fulfilled)}</div>
@@ -528,11 +609,13 @@ function QueueView({
   onStatusChange,
   onToggleItem,
   density,
+  activeStation,
 }: {
   tickets: KdsTicket[]
   onStatusChange: (ticketId: string, status: string) => void
   onToggleItem: (ticketId: string, itemId: string, fulfilled: boolean) => void
   density: Density
+  activeStation: string
 }) {
   return (
     <section className="px-8 py-6">
@@ -544,7 +627,7 @@ function QueueView({
       <div className={density === 'compact' ? 'space-y-2' : 'space-y-3'}>
         {tickets.length === 0 ? (
           <div className="rounded border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-            No active tickets
+            No active tickets for this station
           </div>
         ) : (
           tickets.map((ticket) => (
@@ -554,6 +637,7 @@ function QueueView({
               onStatusChange={onStatusChange}
               onToggleItem={onToggleItem}
               density={density}
+              activeStation={activeStation}
             />
           ))
         )}
@@ -562,17 +646,52 @@ function QueueView({
   )
 }
 
-export function KDSClient() {
+export interface KDSClientProps {
+  initialStation?: string
+}
+
+export function KDSClient({ initialStation }: KDSClientProps = {}) {
+  let searchParamStation: string | null = null
+  try {
+    const searchParams = useSearchParams()
+    searchParamStation = searchParams?.get('station') || null
+  } catch {
+    // In environments where useSearchParams is outside suspense/mock
+  }
+
+  const effectiveInitialStation = initialStation || searchParamStation || 'all'
+
   const [loading, setLoading] = useState(true)
   const [stations, setStations] = useState<Array<{ id: string; name: string }>>([])
   const [tickets, setTickets] = useState<KdsTicket[]>([])
-  const [activeStation, setActiveStation] = useState('all')
+  const [activeStation, setActiveStation] = useState(effectiveInitialStation)
   const [activeStatus, setActiveStatus] = useState<StatusFilter>('all')
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all')
   const [density, setDensity] = useState<Density>('comfortable')
   const [viewMode, setViewMode] = useState<ViewMode>('tickets')
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    if (initialStation) {
+      setActiveStation(initialStation)
+    } else if (searchParamStation) {
+      setActiveStation(searchParamStation)
+    }
+  }, [initialStation, searchParamStation])
+
+  const handleStationChange = (stationId: string) => {
+    setActiveStation(stationId)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (stationId === 'all') {
+        url.searchParams.delete('station')
+      } else {
+        url.searchParams.set('station', stationId)
+      }
+      window.history.replaceState({}, '', url.toString())
+    }
+  }
 
   const fetchKDS = async () => {
     try {
@@ -620,9 +739,27 @@ export function KDSClient() {
 
   const toggleItemFulfilled = async (ticketId: string, itemId: string, fulfilled: boolean) => {
     try {
+      // Optimistic update so UI marks item immediately without closing entire order
+      setTickets((prev) =>
+        prev.map((t) => {
+          if (t.id !== ticketId) return t
+          const updatedItems = t.items.map((i) =>
+            i.id === itemId
+              ? {
+                  ...i,
+                  status: fulfilled ? ('fulfilled' as const) : ('in_progress' as const),
+                  fulfilledAt: fulfilled ? new Date().toISOString() : null,
+                }
+              : i
+          )
+          return { ...t, items: updatedItems }
+        })
+      )
+
       const res: any = await request('/api/graphql', FULFILL_TICKET_ITEM, { ticketId, itemId, fulfilled })
       if (!res?.fulfillKitchenTicketItem?.success) {
         setMutationError(res?.fulfillKitchenTicketItem?.error || 'Failed to update item')
+        await fetchKDS()
         return
       }
       setMutationError(null)
@@ -630,6 +767,7 @@ export function KDSClient() {
     } catch (err) {
       console.error(err)
       setMutationError('Failed to update item')
+      await fetchKDS()
     }
   }
 
@@ -646,7 +784,21 @@ export function KDSClient() {
 
   const stationFiltered = useMemo(() => {
     if (activeStation === 'all') return sortTickets(laneFiltered)
-    return sortTickets(laneFiltered.filter((ticket) => ticket.station?.id === activeStation))
+    const isExpo = isExpoStation(activeStation)
+
+    return sortTickets(
+      laneFiltered.filter((ticket) => {
+        if (isExpo) {
+          // Expo sees all consolidated tickets or expo tickets
+          return true
+        }
+        // Line cook prep station: only show tickets that have items assigned to this station
+        return (
+          ticket.items.some((item) => isStationMatch(activeStation, item.station)) ||
+          isStationMatch(activeStation, ticket.station)
+        )
+      })
+    )
   }, [laneFiltered, activeStation])
 
   const counts = useMemo(() => {
@@ -659,13 +811,33 @@ export function KDSClient() {
     return { active, inProgress, ready, urgent, overdue, critical }
   }, [tickets])
 
+  const displayStations = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>()
+    TOAST_STANDARD_STATIONS.forEach((s) => map.set(normalizeStation(s.id), s))
+    stations.forEach((s) => {
+      const key = normalizeStation(s.name || s.id)
+      if (!map.has(key)) {
+        map.set(key, { id: s.id, name: s.name })
+      }
+    })
+    return Array.from(map.values())
+  }, [stations])
+
   const stationCounts = useMemo(() => {
     const out: Record<string, number> = { all: laneFiltered.length }
-    stations.forEach((station) => {
-      out[station.id] = laneFiltered.filter((ticket) => ticket.station?.id === station.id).length
+    displayStations.forEach((station) => {
+      if (station.id === 'all') return
+      const isExpo = isExpoStation(station.id) || isExpoStation(station.name)
+      out[station.id] = laneFiltered.filter((ticket) => {
+        if (isExpo) return true
+        return (
+          ticket.items.some((item) => isStationMatch(station.id, item.station)) ||
+          isStationMatch(station.id, ticket.station)
+        )
+      }).length
     })
     return out
-  }, [laneFiltered, stations])
+  }, [laneFiltered, displayStations])
 
   if (loading && tickets.length === 0) {
     return (
@@ -679,10 +851,10 @@ export function KDSClient() {
     <div className="bg-background min-h-screen">
       <KDSHeader now={now} activeStatus={activeStatus} onStatusChange={setActiveStatus} counts={counts} />
       <StationTabs
-        stations={stations}
+        stations={displayStations}
         activeStation={activeStation}
         stationCounts={stationCounts}
-        onStationChange={setActiveStation}
+        onStationChange={handleStationChange}
       />
       <KDSViewControls
         laneFilter={laneFilter}
@@ -699,15 +871,17 @@ export function KDSClient() {
       )}
       <StationMetrics tickets={stationFiltered} />
       {viewMode === 'all-day' ? (
-        <AllDayView tickets={stationFiltered} />
+        <AllDayView tickets={stationFiltered} activeStation={activeStation} />
       ) : (
         <QueueView
           tickets={stationFiltered}
           onStatusChange={updateTicketStatus}
           onToggleItem={toggleItemFulfilled}
           density={density}
+          activeStation={activeStation}
         />
       )}
     </div>
   )
 }
+export default KDSClient

@@ -152,15 +152,16 @@ export function getUncoveredKitchenWorkItems(
 
 function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
   const grouped: Record<string, TicketItem[]> = {};
+  const allExpoItems: TicketItem[] = [];
 
   for (const item of order.orderItems || []) {
     if (!item?.id || item.isVoided) continue;
-    const station = item.kitchenStationSnapshot || item.menuItem?.kitchenStation || "expo";
+    const station = item.station || item.kitchenStationSnapshot || item.menuItem?.station || item.menuItem?.kitchenStation || "hot_line";
     const name = item.itemNameSnapshot || item.menuItem?.name || "Item";
     const quantity = item.quantity || 1;
     const notes = item.specialInstructions || null;
-    if (!grouped[station]) grouped[station] = [];
-    grouped[station].push({
+
+    const ticketItem: TicketItem = {
       id: item.id,
       name,
       quantity,
@@ -176,7 +177,17 @@ function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
         station,
         modifiersSnapshot: item.modifiersSnapshot,
       }),
-    });
+    };
+
+    if (!grouped[station]) grouped[station] = [];
+    grouped[station].push(ticketItem);
+
+    // Expo station sees the consolidated order ticket with all items
+    allExpoItems.push({ ...ticketItem });
+  }
+
+  if (allExpoItems.length > 0) {
+    grouped["expo"] = allExpoItems;
   }
 
   return grouped;
@@ -233,10 +244,11 @@ export async function syncKitchenTicketsForOrder(orderId: string, context: Conte
         quantity
         specialInstructions
         itemNameSnapshot
+        station
         kitchenStationSnapshot
         modifiersSnapshot
         isVoided
-        menuItem { id name kitchenStation }
+        menuItem { id name station kitchenStation }
       }
     `,
   });

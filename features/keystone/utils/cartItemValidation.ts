@@ -6,6 +6,7 @@ export type ValidatedCartItem = {
     name: string;
     price: number;
     thumbnail?: string | null;
+    station?: string | null;
     kitchenStation?: string | null;
   };
   modifiers: Array<{
@@ -104,6 +105,7 @@ export async function validateCartItemInput(
       price
       available
       thumbnail
+      station
       kitchenStation
       modifiers {
         id
@@ -142,6 +144,7 @@ export async function validateCartItemInput(
       name: menuItem.name || "Item",
       price: basePrice,
       thumbnail: menuItem.thumbnail || null,
+      station: menuItem.station || menuItem.kitchenStation || "hot_line",
       kitchenStation: menuItem.kitchenStation || null,
     },
     modifiers,

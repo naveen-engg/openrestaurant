@@ -94,6 +94,21 @@ export const OrderItem = list({
       ui: { description: "Immutable menu image URL captured when ordered" },
     }),
 
+    station: select({
+      type: "string",
+      options: [
+        { label: "Hot Line", value: "hot_line" },
+        { label: "Cold Prep", value: "cold_prep" },
+        { label: "Bar", value: "bar" },
+        { label: "Expo", value: "expo" },
+        { label: "Dessert", value: "dessert" },
+      ],
+      defaultValue: "hot_line",
+      ui: {
+        description: "Assigned kitchen prep station (hot_line, cold_prep, bar, expo, dessert)",
+      },
+    }),
+
     kitchenStationSnapshot: text({
       ui: { description: "Kitchen routing station captured when ordered" },
     }),

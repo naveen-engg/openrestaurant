@@ -409,6 +409,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         menuItemId: ID!
         quantity: Int!
         courseNumber: Int
+        station: String
         modifierIds: [ID!]
         specialInstructions: String
       }
