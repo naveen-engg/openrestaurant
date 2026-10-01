@@ -23,6 +23,7 @@ import { Users, Clock, RefreshCw, MoveHorizontal, Merge, Save, RotateCcw } from 
 import { gql, request } from 'graphql-request'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { getTableTurnTimeMinutes, getTableTurnTimeTier } from '@/features/keystone/schema'
 
 interface Table {
   id: string
@@ -652,9 +653,19 @@ export function FloorPlanClient() {
                     <div className="flex items-center justify-between text-sm">
                       <div>
                         <div className="font-medium">#{tableOrder.orderNumber}</div>
-                        <div className="text-muted-foreground flex items-center gap-1">
+                        <div className="text-muted-foreground flex items-center gap-1.5 mt-0.5 text-xs">
                           <Clock className="h-3 w-3" />
-                          {new Date(tableOrder.createdAt).toLocaleTimeString()}
+                          <span>{new Date(tableOrder.createdAt).toLocaleTimeString()}</span>
+                          <span className={cn(
+                            "px-1.5 py-0.2 rounded-full border text-[10px]",
+                            getTableTurnTimeTier(getTableTurnTimeMinutes(tableOrder.createdAt)) === 'alert'
+                              ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300"
+                              : getTableTurnTimeTier(getTableTurnTimeMinutes(tableOrder.createdAt)) === 'warning'
+                              ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                          )}>
+                            {getTableTurnTimeMinutes(tableOrder.createdAt)}m
+                          </span>
                         </div>
                       </div>
                       <div className="text-right">

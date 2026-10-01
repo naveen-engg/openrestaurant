@@ -20,9 +20,26 @@ import {
   PauseCircle,
   Pencil,
   Trash2,
+  MoveHorizontal,
+  Sparkles,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
+  Circle,
+  Square,
+  RectangleHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/features/storefront/lib/currency'
+import {
+  getTableTurnTimeMinutes,
+  getTableTurnTimeTier,
+  getTableServiceStatus,
+  type TableShape,
+  type TurnTimeTier,
+  type TableServiceStatus,
+} from '@/features/keystone/schema'
 import {
   Sheet,
   SheetContent,
@@ -53,6 +70,9 @@ interface Table {
   tableNumber: string
   capacity: number
   status: 'available' | 'occupied' | 'reserved' | 'cleaning'
+  shape?: TableShape | null
+  section?: { id: string; name: string } | null
+  floor?: { id: string; name: string } | null
 }
 
 interface ActiveOrder {
@@ -112,7 +132,9 @@ interface MenuItem {
 const GET_SERVICE_FLOOR = gql`
   query GetServiceFloor {
     tables(orderBy: { tableNumber: asc }) {
-      id tableNumber capacity status
+      id tableNumber capacity status shape
+      section { id name }
+      floor { id name }
     }
     restaurantOrders(
       where: {
@@ -230,6 +252,15 @@ const COMBINE_TABLES = gql`
   }
 `
 
+const TRANSFER_TABLE = gql`
+  mutation TransferTable($orderId: String!, $fromTableId: String!, $toTableId: String!) {
+    transferTable(orderId: $orderId, fromTableId: $fromTableId, toTableId: $toTableId) {
+      success
+      error
+    }
+  }
+`
+
 const FIRE_COURSE = gql`
   mutation FireCourse($courseId: String!) {
     fireCourse(courseId: $courseId) { success error }
@@ -286,6 +317,41 @@ function getBalanceDue(order?: ActiveOrder | null) {
   return Math.max(0, Number(order.total || 0) - getPaidAmount(order))
 }
 
+function getTurnTierBadgeClass(tier: TurnTimeTier) {
+  switch (tier) {
+    case 'alert':
+      return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 animate-pulse font-medium'
+    case 'warning':
+      return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 font-medium'
+    case 'normal':
+    default:
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+  }
+}
+
+function getServiceStatusBadgeClass(status: TableServiceStatus) {
+  switch (status) {
+    case 'paid':
+      return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300'
+    case 'check_dropped':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300'
+    case 'dining':
+      return 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 border-violet-300'
+    case 'cleaning':
+      return 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-300'
+    case 'reserved':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300'
+    default:
+      return 'bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 border-zinc-300'
+  }
+}
+
+function renderTableShapeIcon(shape?: TableShape | null) {
+  if (shape === 'round') return <Circle size={10} className="text-muted-foreground shrink-0" />
+  if (shape === 'square') return <Square size={10} className="text-muted-foreground shrink-0" />
+  return <RectangleHorizontal size={10} className="text-muted-foreground shrink-0" />
+}
+
 export function ServiceFloorClient() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -318,6 +384,9 @@ export function ServiceFloorClient() {
   const [splitGuests, setSplitGuests] = useState<number>(2)
   const [selectedSplitItemIds, setSelectedSplitItemIds] = useState<string[]>([])
   const [selectedMergeTableIds, setSelectedMergeTableIds] = useState<string[]>([])
+  const [transferDialogOpen, setTransferDialogOpen] = useState<boolean>(false)
+  const [transferTargetTableId, setTransferTargetTableId] = useState<string>('')
+  const [selectedSection, setSelectedSection] = useState<string>('all')
   const [processingAction, setProcessingAction] = useState<string | null>(null)
 
   const fetchData = async () => {
@@ -358,6 +427,21 @@ export function ServiceFloorClient() {
     occupied: tables.filter(t => t.status === 'occupied').length,
     activeChecks: orders.length,
   }), [tables, orders])
+
+  const sections = useMemo(() => {
+    const map = new Map<string, string>()
+    tables.forEach(t => {
+      if (t.section?.id && t.section?.name) {
+        map.set(t.section.id, t.section.name)
+      }
+    })
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [tables])
+
+  const filteredTables = useMemo(() => {
+    if (selectedSection === 'all') return tables
+    return tables.filter(t => t.section?.id === selectedSection)
+  }, [tables, selectedSection])
 
   const selectedOrder = selectedTable ? orderByTable[selectedTable.id] : null
 
@@ -601,6 +685,25 @@ export function ServiceFloorClient() {
     })
   }
 
+  const handleTransferTableOrder = async () => {
+    if (!selectedOrder || !selectedTable || !transferTargetTableId) return
+    await withAction('transfer-table', async () => {
+      const res: any = await request('/api/graphql', TRANSFER_TABLE, {
+        orderId: selectedOrder.id,
+        fromTableId: selectedTable.id,
+        toTableId: transferTargetTableId,
+      })
+      if (!res?.transferTable?.success) {
+        throw new Error(res?.transferTable?.error || 'Failed to transfer table')
+      }
+      await fetchData()
+      setTransferDialogOpen(false)
+      setTransferTargetTableId('')
+      setOpenSheet(false)
+      setSheetSuccess('Table successfully transferred')
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -627,6 +730,22 @@ export function ServiceFloorClient() {
             <p className="text-sm text-muted-foreground mt-0.5">Drag tables between lanes to update status. Click any table to manage its check.</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {sections.length > 0 && (
+              <div className="flex items-center gap-1.5 mr-2">
+                <Filter size={13} className="text-muted-foreground" />
+                <Select value={selectedSection} onValueChange={setSelectedSection}>
+                  <SelectTrigger className="h-8 text-xs w-[130px]">
+                    <SelectValue placeholder="All Sections" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Sections</SelectItem>
+                    {sections.map(s => (
+                      <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button variant="outline" size="sm" onClick={fetchData} className="h-8 text-xs">
               <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
               Refresh
@@ -661,7 +780,7 @@ export function ServiceFloorClient() {
         <div className="flex-1 overflow-auto p-4 md:p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 h-full min-h-[400px]">
             {statusOrder.map(laneStatus => {
-              const laneTables = tables.filter(t => t.status === laneStatus)
+              const laneTables = filteredTables.filter(t => t.status === laneStatus)
               return (
                 <div
                   key={laneStatus}
@@ -684,9 +803,9 @@ export function ServiceFloorClient() {
                   <div className="p-2 space-y-2 flex-1 overflow-y-auto">
                     {laneTables.map(table => {
                       const activeOrder = orderByTable[table.id]
-                      const ageMins = activeOrder
-                        ? Math.max(0, Math.floor((Date.now() - new Date(activeOrder.createdAt).getTime()) / 60000))
-                        : 0
+                      const ageMins = activeOrder ? getTableTurnTimeMinutes(activeOrder.createdAt) : 0
+                      const turnTier = getTableTurnTimeTier(ageMins)
+                      const serviceStatus = getTableServiceStatus(activeOrder, table.status)
 
                       return (
                         <div
@@ -701,22 +820,38 @@ export function ServiceFloorClient() {
                         >
                           <div className="flex items-start justify-between mb-2">
                             <div>
-                              <p className="text-sm font-semibold">Table {table.tableNumber}</p>
-                              <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                                <Users size={10} />
-                                {table.capacity} seats
-                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-semibold">Table {table.tableNumber}</p>
+                                {renderTableShapeIcon(table.shape)}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                  <Users size={10} />
+                                  {table.capacity} seats
+                                </p>
+                                {table.section?.name && (
+                                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 font-normal">
+                                    {table.section.name}
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             <GripVertical size={13} className="text-muted-foreground/40 mt-0.5" />
                           </div>
 
                           {activeOrder ? (
-                            <div className="rounded border border-border bg-background/70 p-2 space-y-1">
-                              <p className="text-xs font-medium">#{activeOrder.orderNumber}</p>
+                            <div className="rounded border border-border bg-background/70 p-2 space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium">#{activeOrder.orderNumber}</span>
+                                <Badge className={`text-[9px] px-1.5 py-0 h-4 border ${getTurnTierBadgeClass(turnTier)}`}>
+                                  <Clock3 size={9} className="mr-0.5" />
+                                  {ageMins}m
+                                </Badge>
+                              </div>
                               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Clock3 size={9} />{ageMins}m
-                                </span>
+                                <Badge variant="secondary" className={`text-[9px] px-1.5 py-0 h-4 uppercase ${getServiceStatusBadgeClass(serviceStatus)}`}>
+                                  {serviceStatus.replace('_', ' ')}
+                                </Badge>
                                 <span className="uppercase text-[10px] tracking-wider">{formatStatusLabel(activeOrder.status)}</span>
                               </div>
                               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -729,9 +864,41 @@ export function ServiceFloorClient() {
                                   <span>Due {formatCurrency(getBalanceDue(activeOrder), currencyConfig)}</span>
                                 </div>
                               ) : null}
+
+                              {/* Quick Transfer on card */}
+                              <div className="pt-1 border-t border-border/50 flex justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedTable(table)
+                                    setTransferTargetTableId('')
+                                    setTransferDialogOpen(true)
+                                  }}
+                                >
+                                  <MoveHorizontal size={10} className="mr-1" /> Transfer Table
+                                </Button>
+                              </div>
                             </div>
                           ) : (
-                            <p className="text-[11px] text-muted-foreground">No active check</p>
+                            <div className="space-y-1">
+                              <p className="text-[11px] text-muted-foreground">No active check</p>
+                              {table.status === 'cleaning' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full mt-1.5 h-6 text-[10px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    updateTableStatus(table.id, 'available')
+                                  }}
+                                >
+                                  <Sparkles size={10} className="mr-1" /> Mark Clean
+                                </Button>
+                              )}
+                            </div>
                           )}
 
                           {updatingTable === table.id && (
@@ -1188,6 +1355,31 @@ export function ServiceFloorClient() {
                 ) : (
                   <Button className="h-9 text-xs" variant="destructive" disabled>Cancel Check</Button>
                 )}
+
+                {selectedOrder ? (
+                  <Button
+                    className="h-9 text-xs col-span-2"
+                    variant="outline"
+                    onClick={() => {
+                      setTransferTargetTableId('')
+                      setTransferDialogOpen(true)
+                    }}
+                  >
+                    <MoveHorizontal size={12} className="mr-1.5" /> Transfer Table Check
+                  </Button>
+                ) : null}
+
+                {selectedTable.status === 'cleaning' && (
+                  <Button
+                    className="h-9 text-xs col-span-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={async () => {
+                      await updateTableStatus(selectedTable.id, 'available')
+                      setOpenSheet(false)
+                    }}
+                  >
+                    <Sparkles size={12} className="mr-1.5" /> Mark Table Clean & Available
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -1278,6 +1470,56 @@ export function ServiceFloorClient() {
                 Save changes
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Table Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <MoveHorizontal className="h-4 w-4" /> Transfer Check from Table {selectedTable?.tableNumber}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              Move active check #{selectedOrder?.orderNumber} to another available dining room table. Table {selectedTable?.tableNumber} will automatically transition to cleaning.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Destination Table</label>
+              <Select value={transferTargetTableId} onValueChange={setTransferTargetTableId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select target available table…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tables
+                    .filter(t => t.status === 'available' && t.id !== selectedTable?.id)
+                    .map(t => (
+                      <SelectItem key={t.id} value={t.id} className="text-xs">
+                        Table {t.tableNumber} ({t.capacity} seats{t.section?.name ? ` · ${t.section.name}` : ''})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {tables.filter(t => t.status === 'available' && t.id !== selectedTable?.id).length === 0 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  No available tables found to transfer to. Free up or clean a table first.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="outline" size="sm" onClick={() => setTransferDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleTransferTableOrder}
+              disabled={!transferTargetTableId || processingAction === 'transfer-table'}
+            >
+              {processingAction === 'transfer-table' ? 'Transferring…' : 'Confirm Transfer'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
