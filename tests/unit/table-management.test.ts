@@ -7,6 +7,9 @@ import {
   getTableServiceStatus,
   validateTableTransfer,
   validateTableCombine,
+  getTableDimensions,
+  getAutoArrangedPositions,
+  getSmartTablePositions,
 } from '@/features/keystone/schema'
 
 describe('Stage 3: Real-Time Table Management & Service Floor Map (Unit Tests)', () => {
@@ -144,4 +147,61 @@ describe('Stage 3: Real-Time Table Management & Service Floor Map (Unit Tests)',
       expect(result.error).toMatch(/cannot be combined in status cleaning/)
     })
   })
+
+  describe('Floor Plan Auto-Arrangement & Dimension Utilities', () => {
+    it('calculates proper dimensions based on shape and capacity', () => {
+      const round2 = getTableDimensions('round', 2)
+      expect(round2.width).toBe(72)
+      expect(round2.radius).toBe(36)
+
+      const square4 = getTableDimensions('square', 4)
+      expect(square4.width).toBe(88)
+
+      const rect6 = getTableDimensions('rectangle', 6)
+      expect(rect6.width).toBe(150)
+      expect(rect6.height).toBe(80)
+    })
+
+    it('auto-arranges tables into distinct sections and non-overlapping coordinates', () => {
+      const sampleTables = [
+        { id: 't-1', tableNumber: '1', capacity: 2, shape: 'square' as const, section: { name: 'Main Dining' } },
+        { id: 't-2', tableNumber: '2', capacity: 4, shape: 'round' as const, section: { name: 'Main Dining' } },
+        { id: 't-3', tableNumber: '3', capacity: 6, shape: 'rectangle' as const, section: { name: 'Main Dining' } },
+        { id: 't-10', tableNumber: '10', capacity: 4, shape: 'round' as const, section: { name: 'Patio' } },
+        { id: 't-12', tableNumber: '12', capacity: 6, shape: 'rectangle' as const, section: { name: 'Patio' } },
+      ]
+
+      const arranged = getAutoArrangedPositions(sampleTables, 1000, 700)
+      expect(arranged.length).toBe(5)
+
+      // Main dining tables have x between 100 and 600
+      const mainT1 = arranged.find(t => t.id === 't-1')!
+      const mainT2 = arranged.find(t => t.id === 't-2')!
+      expect(mainT1.positionX).toBeGreaterThanOrEqual(100)
+      expect(mainT2.positionX).toBeGreaterThan(mainT1.positionX)
+
+      // Patio tables are placed in the dedicated patio zone (x >= 700)
+      const patioT10 = arranged.find(t => t.id === 't-10')!
+      expect(patioT10.positionX).toBeGreaterThanOrEqual(700)
+    })
+
+    it('getSmartTablePositions preserves non-zero positions and assigns smart fallbacks for (0, 0) tables', () => {
+      const tables = [
+        { id: 't-custom', tableNumber: '1', positionX: 350, positionY: 280 },
+        { id: 't-unpositioned', tableNumber: '2', positionX: 0, positionY: 0 },
+      ]
+
+      const smart = getSmartTablePositions(tables, 1000, 700)
+      const custom = smart.find(t => t.id === 't-custom')!
+      const unpositioned = smart.find(t => t.id === 't-unpositioned')!
+
+      expect(custom.positionX).toBe(350)
+      expect(custom.positionY).toBe(280)
+
+      // Unpositioned table should not be at 0, 0
+      expect(unpositioned.positionX).toBeGreaterThan(50)
+      expect(unpositioned.positionY).toBeGreaterThan(50)
+    })
+  })
 })
+

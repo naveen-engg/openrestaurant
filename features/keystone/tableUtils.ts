@@ -101,3 +101,128 @@ export function validateTableCombine(
 
   return { isValid: true };
 }
+
+export function getTableDimensions(shape: TableShape, capacity: number = 4): { width: number; height: number; radius: number } {
+  if (shape === 'round') {
+    const radius = capacity <= 2 ? 36 : capacity <= 4 ? 44 : 54;
+    return { width: radius * 2, height: radius * 2, radius };
+  }
+  if (shape === 'square') {
+    const size = capacity <= 2 ? 74 : capacity <= 4 ? 88 : 100;
+    return { width: size, height: size, radius: 12 };
+  }
+  // rectangle
+  const width = capacity <= 4 ? 120 : capacity <= 6 ? 150 : 180;
+  const height = 80;
+  return { width, height, radius: 10 };
+}
+
+export interface PlacedTable {
+  id: string;
+  tableNumber: string;
+  capacity?: number;
+  shape?: TableShape | null;
+  positionX?: number | null;
+  positionY?: number | null;
+  section?: { id?: string; name?: string } | null;
+}
+
+export function getAutoArrangedPositions<T extends PlacedTable>(
+  tables: T[],
+  canvasWidth: number = 1000,
+  canvasHeight: number = 700
+): Array<T & { positionX: number; positionY: number }> {
+  if (!tables || tables.length === 0) return [];
+
+  // Group tables by section (e.g., "Patio", "Bar", "Main Dining" / default)
+  const patioTables: T[] = [];
+  const barTables: T[] = [];
+  const mainTables: T[] = [];
+
+  for (const table of tables) {
+    const sectionName = (table.section?.name || '').toLowerCase();
+    if (sectionName.includes('patio') || sectionName.includes('outdoor')) {
+      patioTables.push(table);
+    } else if (sectionName.includes('bar') || sectionName.includes('lounge')) {
+      barTables.push(table);
+    } else {
+      mainTables.push(table);
+    }
+  }
+
+  const results: Array<T & { positionX: number; positionY: number }> = [];
+
+  // Zone 1: Main Dining (Left / Center: x from 120 to 620)
+  const mainCols = 3;
+  const mainStartX = 120;
+  const mainColGap = 180;
+  const mainStartY = 140;
+  const mainRowGap = 160;
+
+  mainTables.forEach((table, index) => {
+    const col = index % mainCols;
+    const row = Math.floor(index / mainCols);
+    const x = mainStartX + col * mainColGap;
+    const y = mainStartY + row * mainRowGap;
+    results.push({ ...table, positionX: Math.min(x, canvasWidth - 120), positionY: Math.min(y, canvasHeight - 100) });
+  });
+
+  // Zone 2: Patio (Right area: x from 720 to 920)
+  const patioStartX = 720;
+  const patioStartY = 140;
+  const patioColGap = 170;
+  const patioRowGap = 160;
+  const patioCols = 2;
+
+  patioTables.forEach((table, index) => {
+    const col = index % patioCols;
+    const row = Math.floor(index / patioCols);
+    const x = patioStartX + col * patioColGap;
+    const y = patioStartY + row * patioRowGap;
+    results.push({ ...table, positionX: Math.min(x, canvasWidth - 100), positionY: Math.min(y, canvasHeight - 100) });
+  });
+
+  // Zone 3: Bar (Bottom or right side if any)
+  const barStartX = 720;
+  const barStartY = 480;
+  const barColGap = 150;
+
+  barTables.forEach((table, index) => {
+    const x = barStartX + index * barColGap;
+    const y = barStartY;
+    results.push({ ...table, positionX: Math.min(x, canvasWidth - 100), positionY: Math.min(y, canvasHeight - 100) });
+  });
+
+  return results;
+}
+
+export function getSmartTablePositions<T extends PlacedTable>(
+  tables: T[],
+  canvasWidth: number = 1000,
+  canvasHeight: number = 700
+): Array<T & { positionX: number; positionY: number }> {
+  const autoArranged = getAutoArrangedPositions(tables, canvasWidth, canvasHeight);
+  const autoMap = new Map(autoArranged.map(t => [t.id, { x: t.positionX, y: t.positionY }]));
+
+  return tables.map(table => {
+    const currentX = Number(table.positionX || 0);
+    const currentY = Number(table.positionY || 0);
+
+    // If table has valid, non-zero coordinates (> 20), keep it
+    if (currentX > 20 && currentY > 20) {
+      return {
+        ...table,
+        positionX: Math.min(currentX, canvasWidth - 60),
+        positionY: Math.min(currentY, canvasHeight - 60),
+      };
+    }
+
+    // Fall back to auto-arranged coordinate
+    const fallback = autoMap.get(table.id) || { x: 120, y: 120 };
+    return {
+      ...table,
+      positionX: fallback.x,
+      positionY: fallback.y,
+    };
+  });
+}

@@ -24,6 +24,7 @@ import { gql, request } from 'graphql-request'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { getTableTurnTimeMinutes, getTableTurnTimeTier } from '@/features/keystone/tableUtils'
+import { CommercialFloorPlan } from '@/features/platform/service-floor/components/CommercialFloorPlan'
 
 interface Table {
   id: string
@@ -89,6 +90,28 @@ const GET_ALL_TABLES = gql`
         name
       }
     }
+    restaurantOrders(
+      where: {
+        orderType: { equals: "dine_in" }
+        status: { in: ["open", "sent_to_kitchen", "in_progress", "ready", "served"] }
+      }
+      orderBy: { createdAt: desc }
+    ) {
+      id
+      orderNumber
+      status
+      total
+      guestCount
+      createdAt
+      tables {
+        id
+        tableNumber
+      }
+      payments {
+        amount
+        status
+      }
+    }
   }
 `
 
@@ -122,8 +145,8 @@ const UPDATE_TABLE_STATUS = gql`
 `
 
 const UPDATE_TABLE_POSITION = gql`
-  mutation UpdateTablePosition($id: ID!, $x: Int!, $y: Int!) {
-    updateTable(where: { id: $id }, data: { positionX: $x, positionY: $y }) {
+  mutation UpdateTablePosition($id: ID!, $data: TableUpdateInput!) {
+    updateTable(where: { id: $id }, data: $data) {
       id
       positionX
       positionY
@@ -188,6 +211,7 @@ export function FloorPlanClient() {
   const router = useRouter()
   const [floors, setFloors] = useState<Floor[]>([])
   const [tables, setTables] = useState<Table[]>([])
+  const [orders, setOrders] = useState<any[]>([])
   const [selectedFloor, setSelectedFloor] = useState<string>('all')
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [tableOrder, setTableOrder] = useState<TableOrder | null>(null)
@@ -203,8 +227,9 @@ export function FloorPlanClient() {
 
   const fetchTables = useCallback(async () => {
     try {
-      const data = await request('/api/graphql', GET_ALL_TABLES)
-      setTables((data as any).tables || [])
+      const data: any = await request('/api/graphql', GET_ALL_TABLES)
+      setTables(data.tables || [])
+      setOrders(data.restaurantOrders || [])
     } catch (err) {
       console.error('Error fetching tables:', err)
     }
@@ -220,6 +245,7 @@ export function FloorPlanClient() {
         ])
         setFloors((floorsData as any).floors || [])
         setTables((tablesData as any).tables || [])
+        setOrders((tablesData as any).restaurantOrders || [])
       } catch (err) {
         console.error('Error fetching data:', err)
       } finally {
@@ -229,6 +255,34 @@ export function FloorPlanClient() {
 
     fetchData()
   }, [])
+
+  const handleSavePositions = async (updates: Array<{ id: string; x: number; y: number }>) => {
+    try {
+      await Promise.all(
+        updates.map(u =>
+          request('/api/graphql', UPDATE_TABLE_POSITION, {
+            id: u.id,
+            data: { positionX: u.x, positionY: u.y },
+          })
+        )
+      )
+      await fetchTables()
+    } catch (err) {
+      console.error('Error saving positions:', err)
+    }
+  }
+
+  const handleStatusChangeDirect = async (tableId: string, status: string) => {
+    try {
+      await request('/api/graphql', UPDATE_TABLE_STATUS, {
+        id: tableId,
+        status,
+      })
+      await fetchTables()
+    } catch (err) {
+      console.error('Error updating table status:', err)
+    }
+  }
 
   const handleTableClick = async (table: Table, event: React.MouseEvent) => {
     if (editMode) return
@@ -542,80 +596,32 @@ export function FloorPlanClient() {
   }, {} as Record<string, number>)
 
   return (
-    <div className="flex flex-col h-full gap-6 px-4 md:px-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={fetchTables}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-
-          {!editMode ? (
-            <Button variant="outline" size="sm" onClick={() => setEditMode(true)}>
-              Rearrange Tables
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={savePositions} disabled={!hasChanges}>
-                <Save className="h-4 w-4 mr-2" />
-                Save Layout
-              </Button>
-              <Button size="sm" variant="outline" onClick={cancelEdit}>
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              {editMode && (
-                <span className="text-xs text-muted-foreground">Drag tables to reposition</span>
-              )}
-            </div>
-          )}
+    <div className="flex flex-col h-full gap-4 px-4 md:px-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Floor Plan</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Live restaurant floor plan and table seating.</p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {Object.entries(statusConfig).map(([status, config]) => (
-            <div
-              key={status}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-accent"
-            >
-              <span className={cn('inline-block size-1.5 rounded-full outline', config.dotClass)} />
-              {config.label} ({statusCounts[status] || 0})
-            </div>
-          ))}
-        </div>
+        <Button variant="outline" size="sm" onClick={fetchTables}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
-      <Card className="flex-1 rounded-xl">
-        <CardHeader className="pb-2">
-          <CardTitle>Floor Plan {editMode && <span className="text-sm font-normal text-muted-foreground ml-2">(Edit Mode)</span>}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ScrollArea className="h-[calc(100vh-320px)]">
-            <div className="p-6 flex justify-center">
-              <svg
-                width={FLOOR_PLAN_WIDTH}
-                height={FLOOR_PLAN_HEIGHT}
-                className="border rounded-2xl bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-950 shadow-inner"
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-              >
-                <defs>
-                  <pattern
-                    id="grid"
-                    width="40"
-                    height="40"
-                    patternUnits="userSpaceOnUse"
-                  >
-                    <circle cx="0" cy="0" r="1" fill="currentColor" opacity="0.1" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-                
-                {tables.map(renderTable)}
-              </svg>
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+      <CommercialFloorPlan
+        tables={tables as any}
+        orders={orders as any}
+        onSelectTable={(table) => {
+          const found = tables.find(t => t.id === table.id)
+          if (found) {
+            handleTableClick(found, {} as any)
+          }
+        }}
+        onQuickCleanTable={async (tableId) => {
+          await handleStatusChangeDirect(tableId, 'available')
+        }}
+        onSaveTablePositions={handleSavePositions}
+      />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

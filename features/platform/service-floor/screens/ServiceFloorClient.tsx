@@ -28,9 +28,12 @@ import {
   Circle,
   Square,
   RectangleHorizontal,
+  LayoutGrid,
+  Columns3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/features/storefront/lib/currency'
 import {
   getTableTurnTimeMinutes,
@@ -40,6 +43,7 @@ import {
   type TurnTimeTier,
   type TableServiceStatus,
 } from '@/features/keystone/tableUtils'
+import { CommercialFloorPlan } from '../components/CommercialFloorPlan'
 import {
   Sheet,
   SheetContent,
@@ -71,6 +75,8 @@ interface Table {
   capacity: number
   status: 'available' | 'occupied' | 'reserved' | 'cleaning'
   shape?: TableShape | null
+  positionX?: number | null
+  positionY?: number | null
   section?: { id: string; name: string } | null
   floor?: { id: string; name: string } | null
 }
@@ -132,7 +138,7 @@ interface MenuItem {
 const GET_SERVICE_FLOOR = gql`
   query GetServiceFloor {
     tables(orderBy: { tableNumber: asc }) {
-      id tableNumber capacity status shape
+      id tableNumber capacity status shape positionX positionY
       section { id name }
       floor { id name }
     }
@@ -167,6 +173,16 @@ const GET_SERVICE_FLOOR = gql`
 const UPDATE_TABLE_STATUS = gql`
   mutation UpdateServiceFloorTableStatus($tableId: ID!, $status: String!) {
     updateServiceFloorTableStatus(tableId: $tableId, status: $status) { success error }
+  }
+`
+
+const UPDATE_TABLE_POSITION = gql`
+  mutation UpdateTablePosition($id: ID!, $data: TableUpdateInput!) {
+    updateTable(where: { id: $id }, data: $data) {
+      id
+      positionX
+      positionY
+    }
   }
 `
 
@@ -388,6 +404,22 @@ export function ServiceFloorClient() {
   const [transferTargetTableId, setTransferTargetTableId] = useState<string>('')
   const [selectedSection, setSelectedSection] = useState<string>('all')
   const [processingAction, setProcessingAction] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'floor' | 'kanban'>('floor')
+
+  const handleSaveTablePositions = async (updates: Array<{ id: string; x: number; y: number }>) => {
+    await withAction('save-positions', async () => {
+      await Promise.all(
+        updates.map(u =>
+          request('/api/graphql', UPDATE_TABLE_POSITION, {
+            id: u.id,
+            data: { positionX: u.x, positionY: u.y },
+          })
+        )
+      )
+      await fetchData()
+      setSheetSuccess('Table layout saved successfully')
+    })
+  }
 
   const fetchData = async () => {
     try {
@@ -724,14 +756,36 @@ export function ServiceFloorClient() {
 
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="px-4 md:px-6 py-4 border-b border-border flex items-start justify-between gap-4">
+        <div className="px-4 md:px-6 py-4 border-b border-border flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Service Floor</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Drag tables between lanes to update status. Click any table to manage its check.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Live restaurant floor plan & service lanes with Toast-style table operations.</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {sections.length > 0 && (
-              <div className="flex items-center gap-1.5 mr-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* View Mode Toggle: Floor Plan vs Service Lanes */}
+            <div className="flex items-center rounded-lg border border-border p-0.5 bg-muted/40">
+              <Button
+                variant={viewMode === 'floor' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('floor')}
+                className={cn('h-7 text-xs px-2.5 font-medium', viewMode === 'floor' && 'bg-background shadow-xs text-foreground')}
+              >
+                <LayoutGrid size={13} className="mr-1.5" />
+                Floor Plan
+              </Button>
+              <Button
+                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('kanban')}
+                className={cn('h-7 text-xs px-2.5 font-medium', viewMode === 'kanban' && 'bg-background shadow-xs text-foreground')}
+              >
+                <Columns3 size={13} className="mr-1.5" />
+                Service Lanes
+              </Button>
+            </div>
+
+            {viewMode === 'kanban' && sections.length > 0 && (
+              <div className="flex items-center gap-1.5 mr-1">
                 <Filter size={13} className="text-muted-foreground" />
                 <Select value={selectedSection} onValueChange={setSelectedSection}>
                   <SelectTrigger className="h-8 text-xs w-[130px]">
@@ -751,7 +805,7 @@ export function ServiceFloorClient() {
               Refresh
             </Button>
             <Button variant="outline" size="sm" asChild className="h-8 text-xs">
-              <Link href="/dashboard/platform/pos/tables">Floor map</Link>
+              <Link href="/dashboard/platform/pos/tables">POS Map</Link>
             </Button>
           </div>
         </div>
@@ -776,8 +830,30 @@ export function ServiceFloorClient() {
           </div>
         </div>
 
-        {/* Kanban */}
-        <div className="flex-1 overflow-auto p-4 md:p-6">
+        {/* Dynamic View: Floor Plan vs Kanban */}
+        {viewMode === 'floor' ? (
+          <div className="flex-1 overflow-auto p-4 md:p-6">
+            <CommercialFloorPlan
+              tables={tables as any}
+              orders={orders as any}
+              currencyCode={currencyConfig.currencyCode}
+              locale={currencyConfig.locale}
+              onSelectTable={(table) => {
+                const found = tables.find(t => t.id === table.id)
+                if (found) {
+                  setSelectedTable(found)
+                  setOpenSheet(true)
+                }
+              }}
+              onQuickCleanTable={async (tableId) => {
+                await updateTableStatus(tableId, 'available')
+              }}
+              onSaveTablePositions={handleSaveTablePositions}
+            />
+          </div>
+        ) : (
+          /* Kanban */
+          <div className="flex-1 overflow-auto p-4 md:p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 h-full min-h-[400px]">
             {statusOrder.map(laneStatus => {
               const laneTables = filteredTables.filter(t => t.status === laneStatus)
@@ -919,6 +995,7 @@ export function ServiceFloorClient() {
             })}
           </div>
         </div>
+        )}
       </div>
 
       {/* Table sheet */}

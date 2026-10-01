@@ -215,22 +215,63 @@ export async function seedDatabase() {
     }
   }
 
-  // 6. Tables
-  const tableNumbers = ['1', '2', '3', '4', '10', '12']
-  const tableMap: Record<string, any> = {}
-  for (const num of tableNumbers) {
-    const existing = await sudo.query.Table.findMany({
-      where: { tableNumber: { equals: num } },
-      query: 'id tableNumber',
+  // 5b. Sections
+  const sectionNames = ['Main Dining Room', 'Patio & Terrace', 'Bar & Lounge']
+  const sectionMap: Record<string, any> = {}
+  for (const name of sectionNames) {
+    const existing = await sudo.query.Section.findMany({
+      where: { name: { equals: name } },
+      query: 'id name',
     })
     if (existing.length > 0) {
-      tableMap[num] = existing[0]
+      sectionMap[name] = existing[0]
     } else {
-      tableMap[num] = await sudo.db.Table.createOne({
+      sectionMap[name] = await sudo.db.Section.createOne({
+        data: { name },
+      })
+    }
+  }
+
+  // 6. Tables with spatial floor plan coordinates & shapes
+  const tableConfigs = [
+    { num: '1', cap: 2, shape: 'square', x: 140, y: 140, section: 'Main Dining Room' },
+    { num: '2', cap: 2, shape: 'square', x: 320, y: 140, section: 'Main Dining Room' },
+    { num: '3', cap: 4, shape: 'round', x: 500, y: 140, section: 'Main Dining Room' },
+    { num: '4', cap: 6, shape: 'rectangle', x: 220, y: 320, section: 'Main Dining Room' },
+    { num: '10', cap: 4, shape: 'round', x: 740, y: 140, section: 'Patio & Terrace' },
+    { num: '12', cap: 6, shape: 'rectangle', x: 760, y: 320, section: 'Patio & Terrace' },
+  ]
+  const tableMap: Record<string, any> = {}
+  for (const cfg of tableConfigs) {
+    const existing = await sudo.query.Table.findMany({
+      where: { tableNumber: { equals: cfg.num } },
+      query: 'id tableNumber positionX positionY',
+    })
+    const secId = sectionMap[cfg.section]?.id
+    if (existing.length > 0) {
+      tableMap[cfg.num] = existing[0]
+      if (!existing[0].positionX || existing[0].positionX < 20) {
+        await sudo.db.Table.updateOne({
+          where: { id: existing[0].id },
+          data: {
+            positionX: cfg.x,
+            positionY: cfg.y,
+            shape: cfg.shape,
+            capacity: cfg.cap,
+            ...(secId ? { section: { connect: { id: secId } } } : {}),
+          },
+        })
+      }
+    } else {
+      tableMap[cfg.num] = await sudo.db.Table.createOne({
         data: {
-          tableNumber: num,
-          capacity: 4,
+          tableNumber: cfg.num,
+          capacity: cfg.cap,
           status: 'available',
+          shape: cfg.shape,
+          positionX: cfg.x,
+          positionY: cfg.y,
+          ...(secId ? { section: { connect: { id: secId } } } : {}),
         },
       })
     }

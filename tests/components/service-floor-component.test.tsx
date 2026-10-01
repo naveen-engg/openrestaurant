@@ -141,7 +141,7 @@ describe('Stage 3: Service Floor & Real-Time Table Management (Component Tests)'
     })
 
     // Check stat strip numbers
-    expect(screen.getByText('4')).toBeInTheDocument() // Total tables
+    expect(screen.getAllByText('4')[0]).toBeInTheDocument() // Total tables
 
     // Table 101 has active order with turn-time ~35m
     expect(screen.getByText('#20261001-0101')).toBeInTheDocument()
@@ -201,4 +201,30 @@ describe('Stage 3: Service Floor & Real-Time Table Management (Component Tests)'
     const confirmBtn = screen.getByRole('button', { name: /Confirm Transfer/i })
     expect(confirmBtn).toBeInTheDocument()
   })
+
+  it('toggles between Floor Plan and Service Lanes and allows Arrange Tables mode', async () => {
+    render(<ServiceFloorClient />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Floor Plan/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Service Lanes/i })).toBeInTheDocument()
+    })
+
+    // Click Arrange Tables button on Floor Plan
+    const arrangeBtn = screen.getByRole('button', { name: /Arrange Tables/i })
+    expect(arrangeBtn).toBeInTheDocument()
+    fireEvent.click(arrangeBtn)
+
+    // Auto-Arrange and Save Layout buttons become available
+    expect(screen.getByRole('button', { name: /Auto-Arrange/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Save Layout/i })).toBeInTheDocument()
+
+    // Switch to Service Lanes / Kanban view
+    fireEvent.click(screen.getByRole('button', { name: /Service Lanes/i }))
+    await waitFor(() => {
+      expect(screen.getAllByText(/Available/i).length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText(/Occupied/i).length).toBeGreaterThanOrEqual(1)
+    })
+  })
 })
+
