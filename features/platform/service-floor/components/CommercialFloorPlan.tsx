@@ -469,7 +469,7 @@ export function CommercialFloorPlan({
                         <span>{activeOrder.guestCount || 1} guests</span>
                       </div>
                       <div className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                        {formatCurrency(activeOrder.total, currencyCode, locale)}
+                        {formatCurrency(activeOrder.total, { currencyCode, locale }, { inputIsCents: false })}
                       </div>
                       <div className="flex items-center gap-1">
                         {/* Turn Timer Badge */}
