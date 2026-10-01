@@ -1,0 +1,9 @@
+.git
+.next
+node_modules
+.keystone/admin
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.local
