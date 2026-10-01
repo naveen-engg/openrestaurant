@@ -18,6 +18,21 @@ export type TicketItem = {
   station: string
   status: 'new' | 'in_progress' | 'fulfilled'
   fulfilledAt?: string | null
+  courseNumber?: number
+  courseType?: string
+  courseStatus?: 'pending' | 'held' | 'fired' | 'ready' | 'served'
+  courseId?: string
+  isHeld?: boolean
+  firedAt?: string | null
+}
+
+export type OrderCourseData = {
+  id: string
+  courseNumber: number
+  courseType: string
+  status: string
+  onHold: boolean
+  fireTime?: string | null
 }
 
 export type KdsTicket = {
@@ -36,6 +51,7 @@ export type KdsTicket = {
     onHold: boolean
     createdAt: string
     tables: { id: string; tableNumber: string }[]
+    courses?: OrderCourseData[]
   } | null
   items: TicketItem[]
 }
@@ -67,6 +83,14 @@ export const GET_KDS_DATA = gql`
         onHold
         createdAt
         tables { id tableNumber }
+        courses {
+          id
+          courseNumber
+          courseType
+          status
+          onHold
+          fireTime
+        }
       }
     }
   }
@@ -84,6 +108,24 @@ export const UPDATE_TICKET_STATUS = gql`
 export const FULFILL_TICKET_ITEM = gql`
   mutation FulfillKitchenTicketItem($ticketId: String!, $itemId: String!, $fulfilled: Boolean!) {
     fulfillKitchenTicketItem(ticketId: $ticketId, itemId: $itemId, fulfilled: $fulfilled) {
+      success
+      error
+    }
+  }
+`
+
+export const FIRE_COURSE = gql`
+  mutation FireCourse($courseId: String!) {
+    fireCourse(courseId: $courseId) {
+      success
+      error
+    }
+  }
+`
+
+export const HOLD_COURSE = gql`
+  mutation HoldCourse($courseId: String!) {
+    holdCourse(courseId: $courseId) {
       success
       error
     }
@@ -392,12 +434,16 @@ export function TicketCard({
   ticket,
   onStatusChange,
   onToggleItem,
+  onFireCourse,
+  onHoldCourse,
   density,
   activeStation,
 }: {
   ticket: KdsTicket
   onStatusChange: (ticketId: string, status: string) => void
   onToggleItem: (ticketId: string, itemId: string, fulfilled: boolean) => void
+  onFireCourse?: (courseId: string) => void
+  onHoldCourse?: (courseId: string) => void
   density: Density
   activeStation: string
 }) {
@@ -411,15 +457,15 @@ export function TicketCard({
   const urgent = !!ticket.order?.isUrgent
   const onHold = !!ticket.order?.onHold
 
-  const isExpo = isExpoStation(activeStation) || isExpoStation(ticket.station?.name) || ticket.ticketType === 'expediter'
+  const isExpo = isExpoStation(activeStation) || (activeStation === 'all' && (isExpoStation(ticket.station?.name) || ticket.ticketType === 'expediter'))
 
-  // Line cooks only see items assigned to their active station,
-  // while expo station sees the consolidated order ticket with prep status indicators per item.
+  // Line cooks only see items assigned to their active station that are FIRED (not held),
+  // while expo station sees the consolidated order ticket with all items (fired + held) and course fire controls.
   const visibleItems = isExpo
     ? ticket.items
     : activeStation === 'all'
-      ? ticket.items
-      : ticket.items.filter((item) => isStationMatch(activeStation, item.station))
+      ? ticket.items.filter((item) => !item.isHeld)
+      : ticket.items.filter((item) => isStationMatch(activeStation, item.station) && !item.isHeld)
 
   return (
     <div
@@ -454,6 +500,56 @@ export function TicketCard({
         </div>
       </div>
 
+      {/* Course Pacing & Fire Actions Bar */}
+      {ticket.order?.courses && ticket.order.courses.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2.5 pb-2 border-b border-border/60" data-testid="kds-course-bar">
+          {ticket.order.courses.map((course) => {
+            const isHeld = Boolean(course.onHold || course.status === 'pending' || course.status === 'held')
+            return (
+              <div key={course.id} className="flex items-center gap-1">
+                <span
+                  data-testid={`course-badge-${course.id}`}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                    isHeld
+                      ? 'border-amber-500/40 bg-amber-500/10 text-amber-600'
+                      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+                  }`}
+                >
+                  <span>C{course.courseNumber}: {course.courseType}</span>
+                  <span className="uppercase text-[9px]">({isHeld ? 'Held' : 'Fired'})</span>
+                </span>
+                {isHeld && onFireCourse && (
+                  <button
+                    type="button"
+                    data-testid={`fire-course-btn-${course.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onFireCourse(course.id)
+                    }}
+                    className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white transition-colors flex items-center gap-0.5 shadow-sm"
+                  >
+                    🔥 Fire C{course.courseNumber}
+                  </button>
+                )}
+                {!isHeld && onHoldCourse && isExpo && (
+                  <button
+                    type="button"
+                    data-testid={`hold-course-btn-${course.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onHoldCourse(course.id)
+                    }}
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    Hold
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* Items list */}
       <div className={density === 'compact' ? 'space-y-1.5 mb-2' : 'space-y-2 mb-3'} data-testid="kds-items-list">
         {visibleItems.map((item) => {
@@ -471,6 +567,26 @@ export function TicketCard({
             >
               <div className="flex items-center justify-between">
                 <div className={`text-sm flex items-center gap-2 ${done ? 'line-through text-muted-foreground' : ''}`}>
+                  {item.courseNumber && (
+                    <span
+                      data-testid={`item-course-tag-${item.id}`}
+                      className={`text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded border ${
+                        item.isHeld
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-600'
+                          : 'border-blue-500/30 bg-blue-500/10 text-blue-700'
+                      }`}
+                    >
+                      C{item.courseNumber}
+                    </span>
+                  )}
+                  {item.isHeld && (
+                    <span
+                      data-testid={`item-held-tag-${item.id}`}
+                      className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-700"
+                    >
+                      HELD
+                    </span>
+                  )}
                   {isExpo && (
                     <span
                       data-testid={`item-station-tag-${item.id}`}
@@ -608,12 +724,16 @@ function QueueView({
   tickets,
   onStatusChange,
   onToggleItem,
+  onFireCourse,
+  onHoldCourse,
   density,
   activeStation,
 }: {
   tickets: KdsTicket[]
   onStatusChange: (ticketId: string, status: string) => void
   onToggleItem: (ticketId: string, itemId: string, fulfilled: boolean) => void
+  onFireCourse?: (courseId: string) => void
+  onHoldCourse?: (courseId: string) => void
   density: Density
   activeStation: string
 }) {
@@ -636,6 +756,8 @@ function QueueView({
               ticket={ticket}
               onStatusChange={onStatusChange}
               onToggleItem={onToggleItem}
+              onFireCourse={onFireCourse}
+              onHoldCourse={onHoldCourse}
               density={density}
               activeStation={activeStation}
             />
@@ -771,6 +893,36 @@ export function KDSClient({ initialStation }: KDSClientProps = {}) {
     }
   }
 
+  const fireCourseAction = async (courseId: string) => {
+    try {
+      const res: any = await request('/api/graphql', FIRE_COURSE, { courseId })
+      if (!res?.fireCourse?.success) {
+        setMutationError(res?.fireCourse?.error || 'Failed to fire course')
+        return
+      }
+      setMutationError(null)
+      await fetchKDS()
+    } catch (err) {
+      console.error(err)
+      setMutationError('Failed to fire course')
+    }
+  }
+
+  const holdCourseAction = async (courseId: string) => {
+    try {
+      const res: any = await request('/api/graphql', HOLD_COURSE, { courseId })
+      if (!res?.holdCourse?.success) {
+        setMutationError(res?.holdCourse?.error || 'Failed to hold course')
+        return
+      }
+      setMutationError(null)
+      await fetchKDS()
+    } catch (err) {
+      console.error(err)
+      setMutationError('Failed to hold course')
+    }
+  }
+
   const statusFiltered = useMemo(() => {
     if (activeStatus === 'ready') return tickets.filter((t) => t.status === 'ready')
     if (activeStatus === 'in-progress') return tickets.filter((t) => ['new', 'in_progress'].includes(t.status))
@@ -792,9 +944,9 @@ export function KDSClient({ initialStation }: KDSClientProps = {}) {
           // Expo sees all consolidated tickets or expo tickets
           return true
         }
-        // Line cook prep station: only show tickets that have items assigned to this station
+        // Line cook prep station: only show tickets that have FIRED items assigned to this station
         return (
-          ticket.items.some((item) => isStationMatch(activeStation, item.station)) ||
+          ticket.items.some((item) => isStationMatch(activeStation, item.station) && !item.isHeld) ||
           isStationMatch(activeStation, ticket.station)
         )
       })
@@ -886,6 +1038,8 @@ export function KDSClient({ initialStation }: KDSClientProps = {}) {
           tickets={stationFiltered}
           onStatusChange={updateTicketStatus}
           onToggleItem={toggleItemFulfilled}
+          onFireCourse={fireCourseAction}
+          onHoldCourse={holdCourseAction}
           density={density}
           activeStation={activeStation}
         />

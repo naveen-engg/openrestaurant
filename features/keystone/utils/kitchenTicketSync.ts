@@ -14,6 +14,12 @@ export type TicketItem = {
   workSignature?: string | null;
   /** Legacy payload field retained for already-dispatched tickets. */
   sourceVersion?: string | null;
+  courseNumber?: number;
+  courseType?: string;
+  courseStatus?: "pending" | "held" | "fired" | "ready" | "served";
+  courseId?: string;
+  isHeld?: boolean;
+  firedAt?: string | null;
 };
 
 type TicketProjection = {
@@ -94,6 +100,8 @@ function normalizeKitchenWork(item: {
   notes?: string | null;
   station: string;
   modifiersSnapshot?: unknown;
+  courseNumber?: number;
+  isHeld?: boolean;
 }) {
   return {
     id: item.id,
@@ -102,6 +110,8 @@ function normalizeKitchenWork(item: {
     notes: item.notes || null,
     station: normalizeStationName(item.station || "expo"),
     modifiersSnapshot: item.modifiersSnapshot ?? null,
+    courseNumber: item.courseNumber || 1,
+    isHeld: Boolean(item.isHeld),
   };
 }
 
@@ -121,7 +131,8 @@ function isSameKitchenWork(historical: TicketItem, desired: TicketItem) {
     historical.name === desired.name &&
     Number(historical.quantity || 1) === Number(desired.quantity || 1) &&
     (historical.notes || null) === (desired.notes || null) &&
-    normalizeStationName(historical.station || "expo") === normalizeStationName(desired.station || "expo")
+    normalizeStationName(historical.station || "expo") === normalizeStationName(desired.station || "expo") &&
+    Boolean(historical.isHeld) === Boolean(desired.isHeld)
   );
 }
 
@@ -150,7 +161,7 @@ export function getUncoveredKitchenWorkItems(
   });
 }
 
-function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
+export function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
   const grouped: Record<string, TicketItem[]> = {};
   const allExpoItems: TicketItem[] = [];
 
@@ -161,6 +172,12 @@ function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
     const quantity = item.quantity || 1;
     const notes = item.specialInstructions || null;
 
+    const courseNumber = Number(item.courseNumber || item.course?.courseNumber || 1);
+    const courseType = item.course?.courseType || (courseNumber === 1 ? "appetizers" : courseNumber === 2 ? "mains" : "desserts");
+    const courseStatus = item.course?.status || (item.kitchenStatus === 'held' ? 'held' : 'fired');
+    const isCourseHeld = Boolean(item.course?.onHold || courseStatus === 'pending' || courseStatus === 'held');
+    const isItemHeld = item.kitchenStatus === 'held' || (isCourseHeld && !item.firedAt);
+
     const ticketItem: TicketItem = {
       id: item.id,
       name,
@@ -169,6 +186,12 @@ function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
       station,
       status: "new",
       fulfilledAt: null,
+      courseNumber,
+      courseType,
+      courseStatus: isItemHeld ? "held" : "fired",
+      courseId: item.course?.id,
+      isHeld: isItemHeld,
+      firedAt: item.firedAt || (isItemHeld ? null : (item.sentToKitchen || order.createdAt)),
       workSignature: createKitchenWorkSignature({
         id: item.id,
         name,
@@ -176,13 +199,19 @@ function mapOrderItemsByStation(order: any): Record<string, TicketItem[]> {
         notes,
         station,
         modifiersSnapshot: item.modifiersSnapshot,
+        courseNumber,
+        isHeld: isItemHeld,
       }),
     };
 
-    if (!grouped[station]) grouped[station] = [];
-    grouped[station].push(ticketItem);
+    // Line stations: ONLY include if item is NOT held!
+    // Commercial Kitchen Rule: Line cooks should NOT see held items on active prep tickets!
+    if (!isItemHeld) {
+      if (!grouped[station]) grouped[station] = [];
+      grouped[station].push(ticketItem);
+    }
 
-    // Expo station sees the consolidated order ticket with all items
+    // Expo station: Consolidated ticket with ALL items, including held status and course tags
     allExpoItems.push({ ...ticketItem });
   }
 
@@ -239,6 +268,14 @@ export async function syncKitchenTicketsForOrder(orderId: string, context: Conte
       isUrgent
       onHold
       createdAt
+      courses {
+        id
+        courseNumber
+        courseType
+        status
+        onHold
+        fireTime
+      }
       orderItems {
         id
         quantity
@@ -248,6 +285,17 @@ export async function syncKitchenTicketsForOrder(orderId: string, context: Conte
         kitchenStationSnapshot
         modifiersSnapshot
         isVoided
+        courseNumber
+        kitchenStatus
+        firedAt
+        course {
+          id
+          courseNumber
+          courseType
+          status
+          onHold
+          fireTime
+        }
         menuItem { id name station kitchenStation }
       }
     `,

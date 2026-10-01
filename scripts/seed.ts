@@ -260,29 +260,42 @@ export async function seedDatabase() {
       },
     })
 
-    // Add Course
-    const course = await sudo.db.OrderCourse.createOne({
+    // Course 1 (Appetizers & Drinks) - Fired
+    const course1 = await sudo.db.OrderCourse.createOne({
       data: {
         order: { connect: { id: order.id } },
         courseNumber: 1,
-        courseType: 'mains',
-        status: 'pending',
+        courseType: 'appetizers',
+        status: 'fired',
+        onHold: false,
+        fireTime: new Date().toISOString(),
       },
     })
 
-    // Items across Bar, Hot Line, and Cold Prep
+    // Course 2 (Mains) - Held (Toast course pacing)
+    const course2 = await sudo.db.OrderCourse.createOne({
+      data: {
+        order: { connect: { id: order.id } },
+        courseNumber: 2,
+        courseType: 'mains',
+        status: 'pending',
+        onHold: true,
+      },
+    })
+
     const sampleItems = [
-      { item: menuItemMap['Craft IPA Beer'], qty: 2, note: 'Chilled glasses' },
-      { item: menuItemMap['Prime Ribeye Steak'], qty: 1, note: 'Medium rare' },
-      { item: menuItemMap['Caesar Salad'], qty: 1, note: 'Dressing on side' },
+      { item: menuItemMap['Craft IPA Beer'], qty: 2, note: 'Chilled glasses', course: course1, isHeld: false },
+      { item: menuItemMap['Caesar Salad'], qty: 1, note: 'Dressing on side', course: course1, isHeld: false },
+      { item: menuItemMap['Prime Ribeye Steak'], qty: 1, note: 'Medium rare', course: course2, isHeld: true },
     ]
 
+    const nowIso = new Date().toISOString()
     for (const s of sampleItems) {
       if (!s.item) continue
       await sudo.db.OrderItem.createOne({
         data: {
           order: { connect: { id: order.id } },
-          course: { connect: { id: course.id } },
+          course: { connect: { id: s.course.id } },
           menuItem: { connect: { id: s.item.id } },
           quantity: s.qty,
           price: s.item.price || 1000,
@@ -290,6 +303,10 @@ export async function seedDatabase() {
           station: s.item.station,
           kitchenStationSnapshot: s.item.station,
           specialInstructions: s.note,
+          courseNumber: s.course.courseNumber,
+          sentToKitchen: s.isHeld ? null : nowIso,
+          firedAt: s.isHeld ? null : nowIso,
+          kitchenStatus: s.isHeld ? 'held' : 'new',
         },
       })
     }

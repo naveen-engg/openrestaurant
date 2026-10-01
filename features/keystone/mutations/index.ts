@@ -19,7 +19,7 @@ import getCustomerOrder from "./getCustomerOrder";
 import getCustomerOrders from "./getCustomerOrders";
 import activeCartPaymentProviders from "../queries/activeCartPaymentProviders";
 import { transferTable, combineTables } from "./tableManagement";
-import { fireCourse, recallCourse } from "./courseManagement";
+import { fireCourse, recallCourse, holdCourse, fireOrderItem, holdOrderItem } from "./courseManagement";
 import { syncKitchenTickets, updateKitchenTicketStatus, fulfillKitchenTicketItem } from "./kdsTickets";
 import handlePaymentProviderWebhook from "./handlePaymentProviderWebhook";
 import createPOSOrder from "./createPOSOrder";
@@ -326,6 +326,18 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
           courseId: String!
         ): CourseManagementResult
 
+        holdCourse(
+          courseId: String!
+        ): CourseManagementResult
+
+        fireOrderItem(
+          orderItemId: String!
+        ): CourseManagementResult
+
+        holdOrderItem(
+          orderItemId: String!
+        ): CourseManagementResult
+
         syncKitchenTickets: SyncKitchenTicketsResult
 
         updateKitchenTicketStatus(
@@ -412,6 +424,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         station: String
         modifierIds: [ID!]
         specialInstructions: String
+        isHeld: Boolean
       }
 
       type InitiatePaymentSessionResult {
@@ -538,6 +551,9 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         combineTables,
         fireCourse,
         recallCourse,
+        holdCourse,
+        fireOrderItem,
+        holdOrderItem,
         syncKitchenTickets,
         updateKitchenTicketStatus,
         fulfillKitchenTicketItem,

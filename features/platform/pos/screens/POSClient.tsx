@@ -75,6 +75,7 @@ interface CartItem {
   station: string
   modifierIds: string[]
   specialInstructions: string
+  isHeld?: boolean
 }
 
 const GET_DATA = gql`
@@ -185,10 +186,14 @@ export function POSClient() {
   const appendConfiguredItem = (menuItem: MenuItem, modifierIds: string[], instructions = '') => {
     const signature = [...modifierIds].sort().join(':')
     const defaultStation = menuItem.station || menuItem.kitchenStation || 'hot_line'
+    const catName = menuItem.category?.name?.toLowerCase() || ''
+    const defaultCourse = catName.includes('dessert') ? 3 : (catName.includes('food') || catName.includes('main') || catName.includes('entree')) ? 2 : 1
+    const defaultHeld = defaultCourse > 1
+
     const existing = cart.findIndex(
       (item) =>
         item.menuItem.id === menuItem.id &&
-        item.courseNumber === 1 &&
+        item.courseNumber === defaultCourse &&
         [...item.modifierIds].sort().join(':') === signature &&
         item.specialInstructions === instructions
     )
@@ -200,10 +205,11 @@ export function POSClient() {
       setCart([...cart, {
         menuItem,
         quantity: 1,
-        courseNumber: 1,
+        courseNumber: defaultCourse,
         station: defaultStation,
         modifierIds,
         specialInstructions: instructions,
+        isHeld: defaultHeld,
       }])
     }
   }
@@ -281,6 +287,7 @@ export function POSClient() {
           station: item.station || item.menuItem.station || item.menuItem.kitchenStation || 'hot_line',
           modifierIds: item.modifierIds,
           specialInstructions: item.specialInstructions || null,
+          isHeld: Boolean(item.isHeld),
         })),
       })
       setCart([])
@@ -645,22 +652,46 @@ export function POSClient() {
                           <Plus size={10} />
                         </button>
                       </div>
-                      <div className="flex items-center gap-0.5">
-                        {([1, 2, 3] as const).map((c) => (
-                          <button
-                            key={c}
-                            onClick={() => { const n = [...cart]; n[idx].courseNumber = c; setCart(n) }}
-                            className={cn(
-                              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors border',
-                              item.courseNumber === c
-                                ? 'border-foreground/30 bg-muted text-foreground'
-                                : 'border-transparent text-muted-foreground hover:border-border'
-                            )}
-                          >
-                            <span className={cn('w-1.5 h-1.5 rounded-full', courseColors[c])} />
-                            {courseLabels[c]}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-0.5">
+                          {([1, 2, 3] as const).map((c) => (
+                            <button
+                              key={c}
+                              onClick={() => {
+                                const n = [...cart]
+                                n[idx].courseNumber = c
+                                n[idx].isHeld = c > 1 ? (n[idx].isHeld ?? true) : false
+                                setCart(n)
+                              }}
+                              className={cn(
+                                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors border',
+                                item.courseNumber === c
+                                  ? 'border-foreground/30 bg-muted text-foreground'
+                                  : 'border-transparent text-muted-foreground hover:border-border'
+                              )}
+                            >
+                              <span className={cn('w-1.5 h-1.5 rounded-full', courseColors[c])} />
+                              {courseLabels[c]}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          data-testid={`cart-hold-toggle-${idx}`}
+                          onClick={() => {
+                            const n = [...cart]
+                            n[idx].isHeld = !n[idx].isHeld
+                            setCart(n)
+                          }}
+                          className={cn(
+                            'px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition-colors',
+                            item.isHeld
+                              ? 'border-amber-500/50 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20'
+                              : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20'
+                          )}
+                        >
+                          {item.isHeld ? 'Held' : 'Fire'}
+                        </button>
                       </div>
                       <span className="text-xs font-semibold tabular-nums">
                         {formatMoney((
