@@ -6,10 +6,12 @@ export async function seedDatabase() {
   console.log('--- Starting Restaurant Database Seeding ---')
 
   // 1. Role & Admin User
-  let adminRole = await sudo.query.Role.findOne({
-    where: { name: 'Admin' },
+  const existingRoles = await sudo.query.Role.findMany({
+    where: { name: { equals: 'Admin' } },
     query: 'id name',
-  }).catch(() => null)
+  }).catch(() => [])
+
+  let adminRole = existingRoles[0]
 
   if (!adminRole) {
     console.log('Creating Admin role...')
