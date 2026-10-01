@@ -23,7 +23,7 @@ import { Users, Clock, RefreshCw, MoveHorizontal, Merge, Save, RotateCcw } from 
 import { gql, request } from 'graphql-request'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { getTableTurnTimeMinutes, getTableTurnTimeTier } from '@/features/keystone/schema'
+import { getTableTurnTimeMinutes, getTableTurnTimeTier } from '@/features/keystone/tableUtils'
 
 interface Table {
   id: string

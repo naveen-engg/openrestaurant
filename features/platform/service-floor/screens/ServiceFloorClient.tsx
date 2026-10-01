@@ -39,7 +39,7 @@ import {
   type TableShape,
   type TurnTimeTier,
   type TableServiceStatus,
-} from '@/features/keystone/schema'
+} from '@/features/keystone/tableUtils'
 import {
   Sheet,
   SheetContent,
