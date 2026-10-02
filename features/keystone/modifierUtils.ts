@@ -60,9 +60,9 @@ export interface SelectedComboSlot {
  * Calculates the total unit price in cents including base price, modifier adjustments, and combo swaps.
  */
 export function calculateItemPriceWithModifiers(
-  basePriceInCents: number,
-  selectedModifiers: Array<{ priceAdjustment?: number | null }>,
-  comboSlotSwaps: Array<{ swapPriceAdjustment?: number | null }> = []
+  basePriceInCents: number | string,
+  selectedModifiers: Array<{ priceAdjustment?: number | string | null }>,
+  comboSlotSwaps: Array<{ swapPriceAdjustment?: number | string | null }> = []
 ): number {
   const base = Math.max(0, Math.round(Number(basePriceInCents || 0)));
   const modTotal = selectedModifiers.reduce(
