@@ -28,7 +28,7 @@ import updateServiceFloorItem from "./updateServiceFloorItem";
 import { updateServiceFloorCheckStatus, updateServiceFloorTableStatus } from "./serviceFloorTable";
 import { createWaitlistEntry, updateWaitlistStatus } from "./waitlistManagement";
 import { updateReservationStatus, upsertReservation } from "./reservationManagement";
-import { updateShiftStatus, upsertShift } from "./shiftManagement";
+import { updateShiftStatus, upsertShift, clockInStaff, clockOutStaff, toggleStaffBreak } from "./shiftManagement";
 import { createTipPoolLedger, updateTipPoolStatus } from "./tipManagement";
 import { adjustInventory, recordWaste, reverseWaste } from "./wasteManagement";
 import reconcileOrderInventory from "./reconcileOrderInventory";
@@ -277,6 +277,23 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
           action: String!
         ): ShiftMutationResult
 
+        clockInStaff(
+          staffId: ID!
+          role: String
+          hourlyRate: String
+        ): ClockInResult
+
+        clockOutStaff(
+          shiftId: ID!
+          declaredCashTips: String
+          notes: String
+        ): ClockOutResult
+
+        toggleStaffBreak(
+          shiftId: ID!
+          action: String!
+        ): ToggleBreakResult
+
         createTipPoolLedger(
           date: String!
           tipPoolType: String!
@@ -509,6 +526,25 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         success: Boolean!
         error: String
       }
+
+      type ClockInResult {
+        success: Boolean!
+        shiftId: ID
+        error: String
+      }
+
+      type ClockOutResult {
+        success: Boolean!
+        hoursWorked: Float
+        error: String
+      }
+
+      type ToggleBreakResult {
+        success: Boolean!
+        isOnBreak: Boolean!
+        breakMinutes: Int!
+        error: String
+      }
     `,
     resolvers: {
       Query: {
@@ -555,6 +591,9 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         updateReservationStatus,
         upsertShift,
         updateShiftStatus,
+        clockInStaff,
+        clockOutStaff,
+        toggleStaffBreak,
         createTipPoolLedger,
         updateTipPoolStatus,
         adjustInventory,

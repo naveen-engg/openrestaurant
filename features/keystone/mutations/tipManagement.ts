@@ -4,11 +4,15 @@ import {
   assertTipConservation,
   calculateTipDistributions,
 } from "../../lib/tip-allocation";
+import {
+  allocateHousePoolTips,
+  allocatePointsWeightedTips,
+} from "../../platform/staff/timeTrackingUtils";
 import { appendAuditEvent } from "../utils/audit";
 
 interface CreateTipPoolArgs {
   date: string;
-  tipPoolType: "individual" | "pool_by_role" | "house_pool";
+  tipPoolType: "individual" | "pool_by_role" | "house_pool" | "pool_by_points";
   cashTips: string;
   creditTips: string;
 }
@@ -69,16 +73,38 @@ async function calculateDistributions({
     query: "id role hoursWorked clockIn clockOut staff { id name }",
   });
 
-  const distributions = calculateTipDistributions(
-    tipPoolType as "house_pool" | "pool_by_role",
-    totalTipsCents,
-    entries.map((entry: any) => ({
-      staffId: entry.staff?.id || "",
-      staffName: entry.staff?.name || "",
-      role: entry.role || "",
-      hoursWorked: calculateHours(entry),
-    }))
-  );
+  const staffEntries = entries.map((entry: any) => ({
+    staffId: entry.staff?.id || "",
+    staffName: entry.staff?.name || "",
+    role: entry.role || "",
+    hoursWorked: calculateHours(entry),
+  }));
+
+  let distributions: any[] = [];
+  if (tipPoolType === "pool_by_points") {
+    distributions = allocatePointsWeightedTips(totalTipsCents, staffEntries).map((d) => ({
+      staffId: d.staffId,
+      staffName: d.staffName,
+      role: d.role,
+      hoursWorked: d.hoursWorked,
+      amount: d.amountCents,
+    }));
+  } else if (tipPoolType === "house_pool") {
+    distributions = allocateHousePoolTips(totalTipsCents, staffEntries).map((d) => ({
+      staffId: d.staffId,
+      staffName: d.staffName,
+      role: d.role,
+      hoursWorked: d.hoursWorked,
+      amount: d.amountCents,
+    }));
+  } else {
+    distributions = calculateTipDistributions(
+      tipPoolType as "house_pool" | "pool_by_role",
+      totalTipsCents,
+      staffEntries
+    );
+  }
+
   assertTipConservation(totalTipsCents, distributions);
   return distributions;
 }
@@ -92,7 +118,7 @@ export async function createTipPoolLedger(
     return { success: false, error: "Not authorized to manage tip pools" };
   }
 
-  if (!["individual", "pool_by_role", "house_pool"].includes(args.tipPoolType)) {
+  if (!["individual", "pool_by_role", "house_pool", "pool_by_points"].includes(args.tipPoolType)) {
     return { success: false, error: "Invalid tip pool type" };
   }
 

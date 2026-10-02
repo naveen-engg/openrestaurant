@@ -38,8 +38,9 @@ export const TipPool = list({
         { label: "Individual", value: "individual" },
         { label: "Pool by Role", value: "pool_by_role" },
         { label: "House Pool", value: "house_pool" },
+        { label: "Pool by Points", value: "pool_by_points" },
       ],
-      defaultValue: "individual",
+      defaultValue: "house_pool",
     }),
 
     totalTips: integer({

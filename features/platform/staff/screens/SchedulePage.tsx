@@ -20,10 +20,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Calendar as CalendarIcon, Plus, RefreshCw, ChevronLeft, ChevronRight, Briefcase, UserPlus, Timer, XCircle } from 'lucide-react'
+import { Calendar as CalendarIcon, Plus, RefreshCw, ChevronLeft, ChevronRight, Briefcase, UserPlus, Timer, XCircle, Clock } from 'lucide-react'
 import { gql, request } from 'graphql-request'
 import { PageBreadcrumbs } from "@/features/dashboard/components/PageBreadcrumbs"
 import { cn } from '@/lib/utils'
+import { TimeClockModal } from '../components/TimeClockModal'
 
 interface Shift {
   id: string
@@ -132,6 +133,7 @@ export function SchedulePage() {
     return d
   })
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [timeClockOpen, setTimeClockOpen] = useState(false)
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -297,6 +299,14 @@ export function SchedulePage() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
              </div>
+             <Button
+                variant="outline"
+                onClick={() => setTimeClockOpen(true)}
+                className="h-11 px-5 rounded-2xl border-2 font-black uppercase tracking-widest text-xs hover:border-indigo-600 hover:text-indigo-600 transition-all flex items-center gap-2 bg-card"
+              >
+                <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                Time Clock
+             </Button>
              <Button onClick={() => openAddDialog()} className="h-11 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none font-black uppercase tracking-widest text-xs">
                 <Plus className="h-4 w-4 mr-2" />
                 Assign Shift
@@ -362,9 +372,16 @@ export function SchedulePage() {
                                   <Badge className={cn("rounded-lg px-2 py-0.5 text-[8px] font-black uppercase tracking-widest border-none", roleConfig.bg, roleConfig.text)}>
                                     {roleConfig.label}
                                   </Badge>
-                                  <Badge variant="outline" className="rounded-lg px-2 py-0.5 text-[8px] font-black uppercase tracking-widest">
-                                    {shift.status.replace('_', ' ')}
-                                  </Badge>
+                                  {(shift.status === 'started' || (shift.clockIn && !shift.clockOut)) ? (
+                                    <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                      Clocked In
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="rounded-lg px-2 py-0.5 text-[8px] font-black uppercase tracking-widest">
+                                      {shift.status.replace('_', ' ')}
+                                    </Badge>
+                                  )}
                                </div>
 
                                <div className="grid grid-cols-2 gap-1 pt-1 opacity-0 transition-opacity group-hover/shift:opacity-100">
@@ -512,6 +529,12 @@ export function SchedulePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <TimeClockModal
+        open={timeClockOpen}
+        onOpenChange={setTimeClockOpen}
+        onShiftUpdated={fetchShifts}
+      />
     </div>
   )
 }

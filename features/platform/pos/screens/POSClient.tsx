@@ -29,11 +29,13 @@ import {
   Utensils,
   CheckCircle2,
   AlertTriangle,
+  Clock,
 } from 'lucide-react'
 import { gql, request } from 'graphql-request'
 import { cn } from '@/lib/utils'
 import { PageBreadcrumbs } from '@/features/dashboard/components/PageBreadcrumbs'
 import { calculateItemPriceWithModifiers } from '@/features/keystone/modifierUtils'
+import { TimeClockModal } from '@/features/platform/staff/components/TimeClockModal'
 
 interface Table {
   id: string
@@ -164,6 +166,7 @@ export function POSClient() {
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([])
   const [itemInstructions, setItemInstructions] = useState('')
   const [modifierError, setModifierError] = useState<string | null>(null)
+  const [timeClockOpen, setTimeClockOpen] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -376,6 +379,18 @@ export function POSClient() {
             {' · '}
             {availableTables} table{availableTables !== 1 ? 's' : ''} open
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setTimeClockOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <Clock className="h-3.5 w-3.5 text-primary" />
+            Time Clock
+          </Button>
         </div>
       </div>
 
@@ -922,6 +937,11 @@ export function POSClient() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TimeClockModal
+        open={timeClockOpen}
+        onOpenChange={setTimeClockOpen}
+      />
     </div>
   )
 }
