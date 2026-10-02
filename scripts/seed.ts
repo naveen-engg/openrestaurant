@@ -156,6 +156,13 @@ export async function seedDatabase() {
       kitchenStation: 'grill',
     },
     {
+      name: 'Artisan Wagyu Burger',
+      category: 'Food',
+      price: 1850,
+      station: 'hot_line',
+      kitchenStation: 'grill',
+    },
+    {
       name: 'Crispy French Fries',
       category: 'Food',
       price: 600,
@@ -210,6 +217,77 @@ export async function seedDatabase() {
           kitchenStation: item.kitchenStation,
           available: true,
           category: { connect: { id: categoryMap[item.category].id } },
+        },
+      })
+    }
+  }
+
+  // 5a. Seed Commercial Modifiers for Steaks, Burgers, Salads
+  const modifiersToSeed = [
+    // Prime Ribeye Steak: Temperature (Required 1 of 1)
+    { menuItemName: 'Prime Ribeye Steak', name: 'Rare', group: 'temperature', label: 'Meat Temperature', req: true, min: 1, max: 1, price: 0, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Medium Rare', group: 'temperature', label: 'Meat Temperature', req: true, min: 1, max: 1, price: 0, def: true },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Medium', group: 'temperature', label: 'Meat Temperature', req: true, min: 1, max: 1, price: 0, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Medium Well', group: 'temperature', label: 'Meat Temperature', req: true, min: 1, max: 1, price: 0, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Well Done', group: 'temperature', label: 'Meat Temperature', req: true, min: 1, max: 1, price: 0, def: false },
+    // Prime Ribeye Steak: Crust & Butter (Optional, max 2)
+    { menuItemName: 'Prime Ribeye Steak', name: 'Blue Cheese Crust', group: 'addons', label: 'Crust & Butter', req: false, min: 0, max: 2, price: 300, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Truffle Herb Butter', group: 'addons', label: 'Crust & Butter', req: false, min: 0, max: 2, price: 250, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Grilled Shrimp Skewer', group: 'addons', label: 'Crust & Butter', req: false, min: 0, max: 2, price: 700, def: false },
+    // Prime Ribeye Steak: Side Choice (Required 1 of 1)
+    { menuItemName: 'Prime Ribeye Steak', name: 'Roasted Garlic Mash', group: 'sides', label: 'Included Side', req: true, min: 1, max: 1, price: 0, def: true },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Truffle Parmesan Fries', group: 'sides', label: 'Included Side', req: true, min: 1, max: 1, price: 250, def: false },
+    { menuItemName: 'Prime Ribeye Steak', name: 'Charred Asparagus', group: 'sides', label: 'Included Side', req: true, min: 1, max: 1, price: 300, def: false },
+
+    // Artisan Wagyu Burger: Temperature (Required 1 of 1)
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Medium Rare', group: 'temperature', label: 'Burger Temp', req: true, min: 1, max: 1, price: 0, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Medium', group: 'temperature', label: 'Burger Temp', req: true, min: 1, max: 1, price: 0, def: true },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Well Done', group: 'temperature', label: 'Burger Temp', req: true, min: 1, max: 1, price: 0, def: false },
+    // Artisan Wagyu Burger: Cheese (Required 1 of 1)
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Aged White Cheddar', group: 'cheese', label: 'Cheese Choice', req: true, min: 1, max: 1, price: 0, def: true },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Swiss Cheese', group: 'cheese', label: 'Cheese Choice', req: true, min: 1, max: 1, price: 100, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Smoked Pepper Jack', group: 'cheese', label: 'Cheese Choice', req: true, min: 1, max: 1, price: 0, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'No Cheese', group: 'cheese', label: 'Cheese Choice', req: true, min: 1, max: 1, price: 0, def: false },
+    // Artisan Wagyu Burger: Extra Addons (Optional, max 3)
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Applewood Smoked Bacon', group: 'addons', label: 'Extra Toppings', req: false, min: 0, max: 3, price: 200, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Fresh Hass Avocado', group: 'addons', label: 'Extra Toppings', req: false, min: 0, max: 3, price: 250, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'Sunny Side Up Egg', group: 'addons', label: 'Extra Toppings', req: false, min: 0, max: 3, price: 150, def: false },
+    // Artisan Wagyu Burger: Removals (Optional, max 4)
+    { menuItemName: 'Artisan Wagyu Burger', name: 'NO Caramelized Onions', group: 'removals', label: 'Removals', req: false, min: 0, max: 4, price: 0, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'NO House Pickles', group: 'removals', label: 'Removals', req: false, min: 0, max: 4, price: 0, def: false },
+    { menuItemName: 'Artisan Wagyu Burger', name: 'NO Truffle Aioli', group: 'removals', label: 'Removals', req: false, min: 0, max: 4, price: 0, def: false },
+
+    // Caesar Salad: Protein Add-on (Optional, max 1)
+    { menuItemName: 'Caesar Salad', name: 'Grilled Herb Chicken', group: 'addons', label: 'Add Protein', req: false, min: 0, max: 1, price: 600, def: false },
+    { menuItemName: 'Caesar Salad', name: 'Blackened Wild Salmon', group: 'addons', label: 'Add Protein', req: false, min: 0, max: 1, price: 900, def: false },
+    { menuItemName: 'Caesar Salad', name: 'Jumbo Garlic Prawns', group: 'addons', label: 'Add Protein', req: false, min: 0, max: 1, price: 800, def: false },
+    // Caesar Salad: Dressing Prep
+    { menuItemName: 'Caesar Salad', name: 'Dressing on Side', group: 'dressings', label: 'Dressing Prep', req: false, min: 0, max: 1, price: 0, def: false },
+    { menuItemName: 'Caesar Salad', name: 'Extra Dressing', group: 'dressings', label: 'Dressing Prep', req: false, min: 0, max: 1, price: 75, def: false },
+  ]
+
+  for (const mod of modifiersToSeed) {
+    const parentItem = menuItemMap[mod.menuItemName]
+    if (!parentItem) continue
+    const existing = await sudo.query.MenuItemModifier.findMany({
+      where: {
+        menuItem: { id: { equals: parentItem.id } },
+        name: { equals: mod.name },
+      },
+      query: 'id',
+    })
+    if (existing.length === 0) {
+      await sudo.db.MenuItemModifier.createOne({
+        data: {
+          name: mod.name,
+          modifierGroup: mod.group,
+          modifierGroupLabel: mod.label,
+          required: mod.req,
+          minSelections: mod.min,
+          maxSelections: mod.max,
+          priceAdjustment: mod.price,
+          defaultSelected: mod.def,
+          menuItem: { connect: { id: parentItem.id } },
         },
       })
     }

@@ -20,6 +20,13 @@ export type TicketItem = {
   courseId?: string;
   isHeld?: boolean;
   firedAt?: string | null;
+  modifiers?: Array<{
+    id?: string;
+    name: string;
+    modifierGroup?: string;
+    priceAdjustment?: number;
+    action?: string;
+  }> | null;
 };
 
 type TicketProjection = {
@@ -192,6 +199,7 @@ export function mapOrderItemsByStation(order: any): Record<string, TicketItem[]>
       courseId: item.course?.id,
       isHeld: isItemHeld,
       firedAt: item.firedAt || (isItemHeld ? null : (item.sentToKitchen || order.createdAt)),
+      modifiers: item.modifiersSnapshot || null,
       workSignature: createKitchenWorkSignature({
         id: item.id,
         name,

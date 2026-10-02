@@ -5,6 +5,8 @@ import { gql, request } from 'graphql-request'
 import { RefreshCw } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
+import { formatModifierDisplay } from '@/features/keystone/modifierUtils'
+
 export type StatusFilter = 'all' | 'in-progress' | 'ready'
 export type LaneFilter = 'all' | 'prep' | 'expediter'
 export type Density = 'comfortable' | 'compact'
@@ -24,6 +26,13 @@ export type TicketItem = {
   courseId?: string
   isHeld?: boolean
   firedAt?: string | null
+  modifiers?: Array<{
+    id?: string
+    name: string
+    modifierGroup?: string
+    priceAdjustment?: number
+    action?: any
+  }> | null
 }
 
 export type OrderCourseData = {
@@ -613,6 +622,28 @@ export function TicketCard({
                   </span>
                 </div>
               </div>
+              {item.modifiers && item.modifiers.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1 pl-1" data-testid={`kds-modifiers-${item.id}`}>
+                  {item.modifiers.map((mod, mIdx) => {
+                    const isRemoval = mod.action === 'no' || mod.name.toLowerCase().startsWith('no ')
+                    const isSpecial = mod.action === 'sub' || mod.action === 'extra' || Number(mod.priceAdjustment || 0) > 0
+                    return (
+                      <span
+                        key={mIdx}
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded border inline-flex items-center ${
+                          isRemoval
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 font-bold'
+                            : isSpecial
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                            : 'bg-muted/80 text-foreground/90 border-border'
+                        }`}
+                      >
+                        {formatModifierDisplay(mod)}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
               {item.notes && density === 'comfortable' && (
                 <div className="text-xs italic text-muted-foreground mt-1">{item.notes}</div>
               )}

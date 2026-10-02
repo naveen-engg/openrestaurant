@@ -27,10 +27,13 @@ import {
   RefreshCw,
   Check,
   Utensils,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react'
 import { gql, request } from 'graphql-request'
 import { cn } from '@/lib/utils'
 import { PageBreadcrumbs } from '@/features/dashboard/components/PageBreadcrumbs'
+import { calculateItemPriceWithModifiers } from '@/features/keystone/modifierUtils'
 
 interface Table {
   id: string
@@ -242,10 +245,20 @@ export function POSClient() {
     setModifierError(null)
     setSelectedModifierIds((current) => {
       if (current.includes(modifier.id)) return current.filter((id) => id !== modifier.id)
+      const maximum = Math.max(1, modifier.maxSelections || 1)
+      if (maximum === 1) {
+        // Radio swap: replace any other selection from the same group
+        const otherIdsInGroup = new Set(
+          configuringItem?.modifiers
+            .filter((m) => m.modifierGroup === modifier.modifierGroup)
+            .map((m) => m.id) || []
+        )
+        const cleaned = current.filter((id) => !otherIdsInGroup.has(id))
+        return [...cleaned, modifier.id]
+      }
       const groupSelected = configuringItem?.modifiers.filter(
         (candidate) => candidate.modifierGroup === modifier.modifierGroup && current.includes(candidate.id)
       ) || []
-      const maximum = Math.max(1, modifier.maxSelections || 1)
       if (groupSelected.length >= maximum) {
         return current
       }
@@ -767,9 +780,23 @@ export function POSClient() {
       <Dialog open={Boolean(configuringItem)} onOpenChange={(open) => !open && setConfiguringItem(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Customize {configuringItem?.name}</DialogTitle>
+            <div className="flex items-center justify-between pr-6">
+              <DialogTitle className="text-base font-semibold">
+                Customize {configuringItem?.name}
+              </DialogTitle>
+              {configuringItem && (
+                <span className="font-bold text-sm text-foreground bg-muted px-2 py-0.5 rounded border border-border">
+                  {formatMoney(
+                    calculateItemPriceWithModifiers(
+                      Number(configuringItem.price || 0),
+                      configuringItem.modifiers.filter((m) => selectedModifierIds.includes(m.id))
+                    )
+                  )}
+                </span>
+              )}
+            </div>
           </DialogHeader>
-          <div className="max-h-[55vh] space-y-5 overflow-y-auto py-2">
+          <div className="max-h-[55vh] space-y-5 overflow-y-auto py-2 pr-1">
             {modifierGroups.map(([group, modifiers]) => {
               const minimum = Math.max(
                 modifiers.some((modifier) => modifier.required) ? 1 : 0,
@@ -778,33 +805,66 @@ export function POSClient() {
               const maximum = Math.min(
                 ...modifiers.map((modifier) => Math.max(1, Number(modifier.maxSelections || 1)))
               )
+              const selectedCount = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id)).length
+              const isSatisfied = selectedCount >= minimum
+
               return (
-                <div key={group} className="space-y-2">
+                <div key={group} className="space-y-2 p-3 rounded-lg border border-border/80 bg-card/60">
                   <div className="flex items-center justify-between">
-                    <Label>{modifiers[0]?.modifierGroupLabel || group}</Label>
-                    <span className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="font-semibold text-xs">
+                        {modifiers[0]?.modifierGroupLabel || group}
+                      </Label>
+                      {minimum > 0 && !isSatisfied && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 dark:bg-rose-950/60 px-1.5 py-0.2 rounded border border-rose-200 dark:border-rose-800">
+                          Required
+                        </span>
+                      )}
+                      {minimum > 0 && isSatisfied && (
+                        <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800 flex items-center gap-0.5">
+                          <Check size={9} /> Done
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
                       {minimum > 0 ? `Choose ${minimum}` : 'Optional'} · max {maximum}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {modifiers.map((modifier) => {
                       const selected = selectedModifierIds.includes(modifier.id)
+                      const isRadio = maximum === 1
                       return (
                         <button
                           key={modifier.id}
                           type="button"
                           onClick={() => toggleModifier(modifier)}
                           className={cn(
-                            'rounded-lg border p-3 text-left text-sm transition-colors',
-                            selected ? 'border-foreground bg-muted' : 'border-border hover:bg-muted/40'
+                            'rounded-lg border p-2.5 text-left text-xs transition-all relative flex flex-col justify-between min-h-[52px]',
+                            selected
+                              ? 'border-foreground bg-foreground/10 text-foreground font-semibold shadow-xs ring-1 ring-foreground/20'
+                              : 'border-border hover:bg-muted/40 text-foreground/90'
                           )}
                         >
-                          <span className="font-medium">{modifier.name}</span>
-                          {Number(modifier.priceAdjustment || 0) !== 0 && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {Number(modifier.priceAdjustment) > 0 ? '+' : ''}{formatMoney(Number(modifier.priceAdjustment))}
-                            </span>
-                          )}
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="truncate">{modifier.name}</span>
+                            {selected && (
+                              <CheckCircle2 size={13} className="shrink-0 text-foreground" />
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-[11px]">
+                            {Number(modifier.priceAdjustment || 0) !== 0 ? (
+                              <span className={cn(
+                                'font-medium',
+                                Number(modifier.priceAdjustment) > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                              )}>
+                                {Number(modifier.priceAdjustment) > 0 ? '+' : ''}{formatMoney(Number(modifier.priceAdjustment))}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-[10px]">Included</span>
+                            )}
+                            {isRadio && <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1-choice</span>}
+                          </div>
                         </button>
                       )
                     })}
@@ -812,21 +872,51 @@ export function POSClient() {
                 </div>
               )
             })}
+
+            {/* Quick Notes & Instructions */}
             <div className="space-y-2">
-              <Label htmlFor="pos-item-instructions">Item instructions</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="pos-item-instructions" className="text-xs font-semibold">Special Instructions</Label>
+                <div className="flex items-center gap-1">
+                  {['ALLERGY', 'ON SIDE', 'EXTRA CRISPY', 'NO SALT'].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setItemInstructions((prev) => (prev ? `${prev}, ${chip}` : chip))}
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border bg-muted/60 hover:bg-muted text-muted-foreground transition-colors"
+                    >
+                      +{chip}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Textarea
                 id="pos-item-instructions"
                 value={itemInstructions}
                 maxLength={500}
                 onChange={(event) => setItemInstructions(event.target.value)}
-                placeholder="Preparation notes"
+                placeholder="Allergy notes, extra crispy, sauce on the side..."
+                className="text-xs resize-none h-14"
               />
             </div>
-            {modifierError && <p className="text-sm text-destructive">{modifierError}</p>}
+            {modifierError && (
+              <p className="text-xs text-destructive flex items-center gap-1 font-medium bg-destructive/10 p-2 rounded border border-destructive/20">
+                <AlertTriangle size={12} /> {modifierError}
+              </p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfiguringItem(null)}>Cancel</Button>
-            <Button onClick={confirmConfiguredItem}>Add item</Button>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => setConfiguringItem(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={confirmConfiguredItem} className="bg-foreground text-background hover:opacity-90">
+              Add to Check • {configuringItem && formatMoney(
+                calculateItemPriceWithModifiers(
+                  Number(configuringItem.price || 0),
+                  configuringItem.modifiers.filter((m) => selectedModifierIds.includes(m.id))
+                )
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
