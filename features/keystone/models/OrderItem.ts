@@ -180,6 +180,7 @@ export const OrderItem = list({
       type: "string",
       options: [
         { label: "New", value: "new" },
+        { label: "Held", value: "held" },
         { label: "In Progress", value: "in_progress" },
         { label: "Ready", value: "ready" },
         { label: "Fulfilled", value: "fulfilled" },
