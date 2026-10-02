@@ -75,6 +75,7 @@ interface CartItem {
   menuItem: MenuItem
   quantity: number
   courseNumber: number
+  seatNumber?: number
   station: string
   modifierIds: string[]
   specialInstructions: string
@@ -297,6 +298,7 @@ export function POSClient() {
           menuItemId: item.menuItem.id,
           quantity: item.quantity,
           courseNumber: item.courseNumber,
+          seatNumber: item.seatNumber || 1,
           station: item.station || item.menuItem.station || item.menuItem.kitchenStation || 'hot_line',
           modifierIds: item.modifierIds,
           specialInstructions: item.specialInstructions || null,

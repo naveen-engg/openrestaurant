@@ -206,6 +206,57 @@ export const RestaurantOrder = list({
         }
       })
     }),
+    paidAmount: virtual({
+      field: graphql.field({
+        type: graphql.Int,
+        async resolve(item: any, args, context) {
+          const payments = await context.sudo().query.Payment.findMany({
+            where: {
+              order: { id: { equals: item.id as string } },
+              status: { equals: 'succeeded' }
+            },
+            query: 'amount'
+          });
+          return payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        }
+      })
+    }),
+    balanceDue: virtual({
+      field: graphql.field({
+        type: graphql.Int,
+        async resolve(item: any, args, context) {
+          const total = Number(item.total) || 0;
+          const payments = await context.sudo().query.Payment.findMany({
+            where: {
+              order: { id: { equals: item.id as string } },
+              status: { equals: 'succeeded' }
+            },
+            query: 'amount'
+          });
+          const paid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          return Math.max(0, total - paid);
+        }
+      })
+    }),
+    paymentStatus: virtual({
+      field: graphql.field({
+        type: graphql.String,
+        async resolve(item: any, args, context) {
+          const total = Number(item.total) || 0;
+          const payments = await context.sudo().query.Payment.findMany({
+            where: {
+              order: { id: { equals: item.id as string } },
+              status: { equals: 'succeeded' }
+            },
+            query: 'amount'
+          });
+          const paid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          if (paid === 0) return 'unpaid';
+          if (paid >= total && total > 0) return 'paid';
+          return 'partially_paid';
+        }
+      })
+    }),
     tables: relationship({ ref: "Table.orders", many: true }),
     customer: relationship({ ref: "User.restaurantOrders" }),
     server: relationship({ ref: "User", ui: { labelField: "name" } }),

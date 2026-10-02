@@ -5,7 +5,7 @@ import updateActiveUser from "./updateActiveUser";
 import processPayment, { capturePaymentMutation, getPaymentStatus, reconcilePaymentMutation } from "./processPayment";
 import redeemGiftCard, { lookupGiftCard } from "./redeemGiftCard";
 import refundPayment from "./refundPayment";
-import { splitCheckByItem, splitCheckByGuest } from "./splitCheck";
+import { splitCheckByItem, splitCheckByGuest, updateOrderItemSeat } from "./splitCheck";
 import { voidOrderItem, compOrderItem, voidOrder } from "./voidComp";
 import initiatePaymentSession from "./initiatePaymentSession";
 import completeActiveCart from "./completeActiveCart";
@@ -131,6 +131,11 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
           orderId: String!
           guestCount: Int!
         ): SplitCheckResult
+
+        updateOrderItemSeat(
+          orderItemId: ID!
+          seatNumber: Int!
+        ): UpdateOrderItemSeatResult
 
         voidOrderItem(
           orderItemId: String!
@@ -401,6 +406,13 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         error: String
       }
 
+      type UpdateOrderItemSeatResult {
+        success: Boolean!
+        orderItemId: ID
+        seatNumber: Int
+        error: String
+      }
+
       type VoidCompResult {
         success: Boolean!
         requiresManagerApproval: Boolean!
@@ -421,6 +433,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         menuItemId: ID!
         quantity: Int!
         courseNumber: Int
+        seatNumber: Int
         station: String
         modifierIds: [ID!]
         specialInstructions: String
@@ -524,6 +537,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         reconcilePayment: reconcilePaymentMutation,
         splitCheckByItem,
         splitCheckByGuest,
+        updateOrderItemSeat,
         voidOrderItem,
         compOrderItem,
         voidOrder,

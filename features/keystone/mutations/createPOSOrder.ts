@@ -9,6 +9,7 @@ interface POSOrderItemInput {
   menuItemId: string;
   quantity: number;
   courseNumber?: number;
+  seatNumber?: number;
   station?: string | null;
   modifierIds?: string[] | null;
   specialInstructions?: string | null;
@@ -58,6 +59,7 @@ export default async function createPOSOrder(
           specialInstructions: item.specialInstructions,
         })),
         courseNumber: Math.max(1, Math.floor(Number(item.courseNumber || 1))),
+        seatNumber: Math.max(1, Math.floor(Number(item.seatNumber || 1))),
         station: item.station || null,
         isHeld: Boolean(item.isHeld),
       }))
@@ -141,6 +143,7 @@ export default async function createPOSOrder(
         modifiersSnapshot: item.modifiers,
         specialInstructions: item.specialInstructions,
         courseNumber: item.courseNumber,
+        seatNumber: item.seatNumber,
         sentToKitchen: isItemFired ? nowIso : null,
         firedAt: isItemFired ? nowIso : null,
         kitchenStatus: isItemFired ? "new" : "held",

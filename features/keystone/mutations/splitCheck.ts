@@ -155,17 +155,142 @@ export async function splitCheckByItem(
   }
 }
 
+import { splitEvenly } from "../../platform/pos/splitUtils";
+
 export async function splitCheckByGuest(
   _root: unknown,
-  _args: { orderId: string; guestCount: number },
+  args: { orderId: string; guestCount: number },
   context: Context
 ): Promise<SplitCheckResult> {
   if (!permissions.canManageOrders({ session: context.session })) {
     return { success: false, newOrderIds: [], error: "Not authorized to split check" };
   }
-  return {
-    success: false,
-    newOrderIds: [],
-    error: "Equal guest splits are disabled until financial check-allocation records and tender UI are migrated. Split by item instead.",
-  };
+  try {
+    const guestCount = Math.max(1, Math.floor(Number(args.guestCount || 1)));
+    if (guestCount <= 1) throw new Error("Guest count must be at least 2 to split check");
+
+    const prisma = context.prisma as any;
+    const key = crypto.createHash("sha256").update(`guest-split:${args.orderId}:${guestCount}`).digest("hex");
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      const order = await tx.restaurantOrder.findUnique({
+        where: { id: args.orderId },
+        include: { tables: true, orderItems: true },
+      });
+      if (!order) throw new Error("Order not found");
+      if (["completed", "cancelled"].includes(order.status || "")) throw new Error("Closed checks cannot be split");
+
+      const reservedPayments = await tx.payment.count({
+        where: { orderId: order.id, status: { in: ["processing", "authorized", "succeeded", "unknown"] } },
+      });
+      if (reservedPayments) throw new Error("A check with reserved or successful tenders cannot be split");
+
+      const shares = splitEvenly(Number(order.total || 0), guestCount);
+      const subtotalShares = splitEvenly(Number(order.subtotal || 0), guestCount);
+      const taxShares = splitEvenly(Number(order.tax || 0), guestCount);
+      const tipShares = splitEvenly(Number(order.tip || 0), guestCount);
+      const discountShares = splitEvenly(Number(order.discount || 0), guestCount);
+
+      // Update original check for Guest 1
+      await tx.restaurantOrder.update({
+        where: { id: order.id },
+        data: {
+          guestCount: 1,
+          subtotal: subtotalShares[0].amount,
+          tax: taxShares[0].amount,
+          tip: tipShares[0].amount,
+          discount: discountShares[0].amount,
+          total: shares[0].amount,
+        },
+      });
+
+      const newOrderIds: string[] = [];
+
+      // Create new checks for Guests 2..N
+      for (let i = 1; i < guestCount; i++) {
+        const newOrder = await tx.restaurantOrder.create({
+          data: {
+            orderNumber: buildSplitOrderNumber(),
+            orderType: order.orderType,
+            orderSource: order.orderSource,
+            status: order.status,
+            guestCount: 1,
+            specialInstructions: `Guest ${i + 1} split of #${order.orderNumber}`,
+            subtotal: subtotalShares[i].amount,
+            tax: taxShares[i].amount,
+            tip: tipShares[i].amount,
+            discount: discountShares[i].amount,
+            total: shares[i].amount,
+            currencyCode: order.currencyCode,
+            customerId: order.customerId,
+            serverId: order.serverId,
+            createdById: context.session?.itemId || order.createdById,
+            customerName: order.customerName,
+            customerEmail: order.customerEmail,
+            customerPhone: order.customerPhone,
+            deliveryAddress: order.deliveryAddress,
+            deliveryAddress2: order.deliveryAddress2,
+            deliveryCity: order.deliveryCity,
+            deliveryState: order.deliveryState,
+            deliveryZip: order.deliveryZip,
+            deliveryCountryCode: order.deliveryCountryCode,
+            tables: order.tables.length ? { connect: order.tables.map((table: any) => ({ id: table.id })) } : undefined,
+          },
+        });
+        newOrderIds.push(newOrder.id);
+      }
+
+      await tx.orderAdjustment.create({
+        data: {
+          idempotencyKey: key,
+          type: "split",
+          amount: Number(order.total || 0) - shares[0].amount,
+          reason: `Split evenly across ${guestCount} guests`,
+          metadata: { originalOrderId: order.id, newOrderIds, guestCount },
+          orderId: order.id,
+          actorId: context.session?.itemId || null,
+          approvedById: context.session?.itemId || null,
+        },
+      });
+
+      return { originalOrderId: order.id, newOrderIds };
+    }, { isolationLevel: "Serializable" });
+
+    await appendAuditEvent(context, {
+      eventType: "check.split_by_guest",
+      entityType: "RestaurantOrder",
+      entityId: args.orderId,
+      after: { newOrderIds: result.newOrderIds, guestCount },
+      metadata: { idempotencyKey: key },
+    }).catch((error) => console.error("Guest split audit event failed:", error));
+
+    return { success: true, newOrderIds: result.newOrderIds, error: null };
+  } catch (error) {
+    return { success: false, newOrderIds: [], error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
+export async function updateOrderItemSeat(
+  _root: unknown,
+  args: { orderItemId: string; seatNumber: number },
+  context: Context
+) {
+  if (!permissions.canManageOrders({ session: context.session })) {
+    return { success: false, orderItemId: null, seatNumber: null, error: "Not authorized to update seat" };
+  }
+  try {
+    const seatNumber = Math.max(1, Math.floor(Number(args.seatNumber || 1)));
+    const updated = await context.sudo().db.OrderItem.updateOne({
+      where: { id: args.orderItemId },
+      data: { seatNumber },
+    });
+    return { success: true, orderItemId: updated.id, seatNumber: updated.seatNumber, error: null };
+  } catch (error) {
+    return {
+      success: false,
+      orderItemId: null,
+      seatNumber: null,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
