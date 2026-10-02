@@ -322,7 +322,7 @@ export function allocatePointsWeightedTips(
 export function allocatePercentageWeightedTips(
   totalTipsCents: number,
   entries: TipStaffEntry[],
-  rolePercentages: Record<string, number>
+  rolePercentages: Record<string, number> = { server: 60, bartender: 20, busser: 10, host: 10 }
 ): TipAllocationResult[] {
   const safeTotal = Math.max(0, Math.round(totalTipsCents));
   const eligibleEntries = entries.filter(

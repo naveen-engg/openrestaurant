@@ -1,8 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   reactCompiler: true,
-  serverExternalPackages: ['graphql'],
+  serverExternalPackages: ['graphql', '@prisma/client', '@keystone-6/core'],
   // Workaround since we diverged from Keystone reltionship and document views
   // typescript: {
   //   ignoreBuildErrors: true,

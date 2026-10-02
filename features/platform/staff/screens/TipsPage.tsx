@@ -250,7 +250,7 @@ export function TipsPage() {
           weightOrPoints: d.weightOrPoints,
         }))
       } else if (form.tipPoolType === 'pool_by_role') {
-        dists = allocatePercentageWeightedTips(totalTipsCents, shiftStaff).map((d) => ({
+        dists = allocatePercentageWeightedTips(totalTipsCents, shiftStaff, { server: 60, bartender: 20, busser: 10, host: 10 }).map((d) => ({
           staffId: d.staffId,
           staffName: d.staffName,
           role: d.role,
