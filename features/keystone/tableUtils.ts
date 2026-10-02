@@ -104,17 +104,17 @@ export function validateTableCombine(
 
 export function getTableDimensions(shape: TableShape, capacity: number = 4): { width: number; height: number; radius: number } {
   if (shape === 'round') {
-    const radius = capacity <= 2 ? 36 : capacity <= 4 ? 44 : 54;
+    const radius = capacity <= 2 ? 40 : capacity <= 4 ? 48 : 58;
     return { width: radius * 2, height: radius * 2, radius };
   }
   if (shape === 'square') {
-    const size = capacity <= 2 ? 74 : capacity <= 4 ? 88 : 100;
-    return { width: size, height: size, radius: 12 };
+    const size = capacity <= 2 ? 88 : capacity <= 4 ? 98 : 110;
+    return { width: size, height: size, radius: 14 };
   }
   // rectangle
-  const width = capacity <= 4 ? 120 : capacity <= 6 ? 150 : 180;
-  const height = 80;
-  return { width, height, radius: 10 };
+  const width = capacity <= 4 ? 130 : capacity <= 6 ? 160 : 190;
+  const height = 86;
+  return { width, height, radius: 12 };
 }
 
 export interface PlacedTable {

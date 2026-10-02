@@ -462,20 +462,22 @@ export function CommercialFloorPlan({
 
                   {/* Active Order Details if Occupied */}
                   {table.status === 'occupied' && activeOrder ? (
-                    <div className="flex flex-col items-center gap-0.5 mt-0.5 leading-tight">
+                    <div className="flex flex-col items-center gap-0.5 mt-0.5 leading-none">
                       <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span className="font-semibold text-foreground">#{activeOrder.orderNumber}</span>
+                        <span className="font-semibold text-foreground truncate max-w-[80px]" title={`#${activeOrder.orderNumber}`}>
+                          #{activeOrder.orderNumber}
+                        </span>
                         <span>·</span>
-                        <span>{activeOrder.guestCount || 1} guests</span>
+                        <span className="shrink-0">{activeOrder.guestCount || 1} guests</span>
                       </div>
-                      <div className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                        {formatCurrency(activeOrder.total, { currencyCode, locale }, { inputIsCents: false })}
+                      <div className="text-xs font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                        {formatCurrency(activeOrder.total, { currencyCode, locale }, { inputIsCents: true })}
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 mt-1">
                         {/* Turn Timer Badge */}
                         <span
                           className={cn(
-                            'px-1.5 py-0.2 rounded-full text-[9px] font-medium border flex items-center gap-0.5',
+                            'px-1.5 py-0.5 rounded-full text-[9px] font-medium border flex items-center gap-0.5',
                             turnTier === 'alert'
                               ? 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/80 dark:text-rose-200 animate-pulse'
                               : turnTier === 'warning'

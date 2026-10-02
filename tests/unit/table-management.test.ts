@@ -151,15 +151,15 @@ describe('Stage 3: Real-Time Table Management & Service Floor Map (Unit Tests)',
   describe('Floor Plan Auto-Arrangement & Dimension Utilities', () => {
     it('calculates proper dimensions based on shape and capacity', () => {
       const round2 = getTableDimensions('round', 2)
-      expect(round2.width).toBe(72)
-      expect(round2.radius).toBe(36)
+      expect(round2.width).toBe(80)
+      expect(round2.radius).toBe(40)
 
       const square4 = getTableDimensions('square', 4)
-      expect(square4.width).toBe(88)
+      expect(square4.width).toBe(98)
 
       const rect6 = getTableDimensions('rectangle', 6)
-      expect(rect6.width).toBe(150)
-      expect(rect6.height).toBe(80)
+      expect(rect6.width).toBe(160)
+      expect(rect6.height).toBe(86)
     })
 
     it('auto-arranges tables into distinct sections and non-overlapping coordinates', () => {
