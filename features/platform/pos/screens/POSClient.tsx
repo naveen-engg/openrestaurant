@@ -36,6 +36,11 @@ import { cn } from '@/lib/utils'
 import { PageBreadcrumbs } from '@/features/dashboard/components/PageBreadcrumbs'
 import { calculateItemPriceWithModifiers } from '@/features/keystone/modifierUtils'
 import { TimeClockModal } from '@/features/platform/staff/components/TimeClockModal'
+import { OfflineBanner, OfflineStatusPill } from '../components/OfflineBanner'
+import { OfflineSyncModal } from '../components/OfflineSyncModal'
+import { useOfflineSync } from '../offline/useOfflineSync'
+import { enqueuePOSOrder } from '../offline/syncEngine'
+import { cachePOSCatalog, getCachedPOSCatalog } from '../offline/offlineStorage'
 
 interface Table {
   id: string
@@ -167,18 +172,36 @@ export function POSClient() {
   const [itemInstructions, setItemInstructions] = useState('')
   const [modifierError, setModifierError] = useState<string | null>(null)
   const [timeClockOpen, setTimeClockOpen] = useState(false)
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false)
+
+  const offlineSync = useOfflineSync({
+    requestFn: request,
+    createOrderMutation: CREATE_POS_ORDER,
+    autoSyncOnReconnect: true,
+  })
 
   const fetchData = async () => {
     try {
       const res: any = await request('/api/graphql', GET_DATA)
-      setData({
+      const catalogData = {
         tables: res.tables || [],
         categories: res.menuCategories || [],
         items: res.menuItems || [],
         storeSettings: res.storeSettings || null,
-      })
+      }
+      setData(catalogData)
+      await cachePOSCatalog(catalogData).catch(() => {})
     } catch (err) {
-      console.error(err)
+      console.warn('Live fetch failed, loading POS catalog from offline cache:', err)
+      const cached = await getCachedPOSCatalog().catch(() => null)
+      if (cached) {
+        setData({
+          tables: cached.tables || [],
+          categories: cached.categories || [],
+          items: cached.items || [],
+          storeSettings: cached.storeSettings || null,
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -287,8 +310,53 @@ export function POSClient() {
     setConfiguringItem(null)
   }
 
+  const handleSaveOfflineOrder = async (notice?: string) => {
+    const selectedTableNumbers = selectedTables.map((id) => {
+      const t = data.tables.find((tbl) => tbl.id === id)
+      return t ? `T${t.tableNumber}` : id
+    })
+
+    const queued = await enqueuePOSOrder({
+      orderType,
+      guestCount,
+      tableIds: orderType === 'dine_in' ? selectedTables : [],
+      tableNumbers: selectedTableNumbers,
+      isUrgent,
+      specialInstructions: specialInstructions || null,
+      items: cart.map((item) => ({
+        menuItem: item.menuItem,
+        quantity: item.quantity,
+        courseNumber: item.courseNumber,
+        seatNumber: item.seatNumber,
+        station: item.station,
+        modifierIds: item.modifierIds,
+        modifierNames: item.menuItem.modifiers
+          .filter((m) => item.modifierIds.includes(m.id))
+          .map((m) => m.name),
+        specialInstructions: item.specialInstructions,
+        isHeld: item.isHeld,
+      })),
+      subtotalCents: cartSubtotal,
+      taxCents: cartTax,
+      totalCents: cartTotal,
+    })
+
+    setCart([])
+    setSelectedTables([])
+    setIsUrgent(false)
+    setSpecialInstructions('')
+    alert(notice || `Order saved offline (Ticket #${queued.clientOrderId}). It will automatically sync when reconnected!`)
+  }
+
   const submitOrder = async () => {
     if (cart.length === 0 || submitting || (orderType === 'dine_in' && selectedTables.length === 0)) return
+
+    // If terminal is currently in offline mode, save directly to local queue
+    if (!offlineSync.isOnline) {
+      await handleSaveOfflineOrder()
+      return
+    }
+
     try {
       setSubmitting(true)
       const res: any = await request('/api/graphql', CREATE_POS_ORDER, {
@@ -313,8 +381,9 @@ export function POSClient() {
       setIsUrgent(false)
       setSpecialInstructions('')
       alert('Order sent to kitchen!')
-    } catch (err) {
-      alert('Error: ' + err)
+    } catch (err: any) {
+      console.warn('Network request failed, falling back to offline queue:', err)
+      await handleSaveOfflineOrder(`Cloud unreachable (${err?.message || 'Network error'}). Order safely saved offline.`)
     } finally {
       setSubmitting(false)
     }
@@ -369,6 +438,13 @@ export function POSClient() {
      */
     <div className="flex flex-col bg-background overflow-hidden" style={{ height: '100svh' }}>
       <PageBreadcrumbs items={breadcrumbs} />
+      <OfflineBanner
+        isOnline={offlineSync.isOnline}
+        pendingCount={offlineSync.pendingCount}
+        isSyncing={offlineSync.isSyncing}
+        onOpenSyncModal={() => setOfflineModalOpen(true)}
+        onSyncNow={offlineSync.syncNow}
+      />
 
       {/* Page header */}
       <div className="px-4 md:px-6 py-4 border-b border-border flex items-start justify-between gap-4 shrink-0">
@@ -381,6 +457,12 @@ export function POSClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <OfflineStatusPill
+            isOnline={offlineSync.isOnline}
+            pendingCount={offlineSync.pendingCount}
+            isSyncing={offlineSync.isSyncing}
+            onClick={() => setOfflineModalOpen(true)}
+          />
           <Button
             type="button"
             variant="outline"
@@ -941,6 +1023,18 @@ export function POSClient() {
       <TimeClockModal
         open={timeClockOpen}
         onOpenChange={setTimeClockOpen}
+      />
+
+      <OfflineSyncModal
+        open={offlineModalOpen}
+        onOpenChange={setOfflineModalOpen}
+        isOnline={offlineSync.isOnline}
+        onToggleOnline={offlineSync.setIsOnline}
+        orders={offlineSync.orders}
+        isSyncing={offlineSync.isSyncing}
+        onSyncNow={offlineSync.syncNow}
+        onClearSynced={offlineSync.clearSynced}
+        onExportBackup={offlineSync.exportBackup}
       />
     </div>
   )
