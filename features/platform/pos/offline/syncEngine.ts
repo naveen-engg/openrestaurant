@@ -39,7 +39,7 @@ export interface EnqueueOrderInput {
   isUrgent: boolean
   specialInstructions?: string | null
   items: Array<{
-    menuItem: { id: string; name: string; price: number | string; station?: string; kitchenStation?: string }
+    menuItem: { id: string; name: string; price: number | string; station?: string | null; kitchenStation?: string | null }
     quantity: number
     courseNumber: number
     seatNumber?: number

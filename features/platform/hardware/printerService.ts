@@ -55,6 +55,7 @@ export const DEFAULT_HARDWARE_SETTINGS: HardwareSettings = {
   autoKickDrawerOnCash: true,
 }
 
+const HARDWARE_STORAGE_KEY = 'openfront_pos_hardware_config'
 let memoryHardwareSettings: HardwareSettings | null = null
 
 export function loadHardwareSettings(): HardwareSettings {
