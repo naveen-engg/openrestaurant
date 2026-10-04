@@ -30,12 +30,15 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
+  Printer,
 } from 'lucide-react'
 import { gql, request } from 'graphql-request'
 import { cn } from '@/lib/utils'
 import { PageBreadcrumbs } from '@/features/dashboard/components/PageBreadcrumbs'
 import { calculateItemPriceWithModifiers } from '@/features/keystone/modifierUtils'
 import { TimeClockModal } from '@/features/platform/staff/components/TimeClockModal'
+import { HardwareSettingsModal } from '@/features/platform/hardware/components/HardwareSettingsModal'
+import { printKitchen } from '@/features/platform/hardware/printerService'
 import { OfflineBanner, OfflineStatusPill } from '../components/OfflineBanner'
 import { OfflineSyncModal } from '../components/OfflineSyncModal'
 import { useOfflineSync } from '../offline/useOfflineSync'
@@ -173,6 +176,7 @@ export function POSClient() {
   const [modifierError, setModifierError] = useState<string | null>(null)
   const [timeClockOpen, setTimeClockOpen] = useState(false)
   const [offlineModalOpen, setOfflineModalOpen] = useState(false)
+  const [hardwareModalOpen, setHardwareModalOpen] = useState(false)
 
   const offlineSync = useOfflineSync({
     requestFn: request,
@@ -376,6 +380,28 @@ export function POSClient() {
           isHeld: Boolean(item.isHeld),
         })),
       })
+      // Automatically dispatch kitchen print ticket
+      printKitchen({
+        ticketNumber: res?.createPOSOrder?.orderNumber || 'ORD',
+        orderNumber: res?.createPOSOrder?.orderNumber || 'ORD',
+        tableName: selectedTableObjects.map((t) => `T${t.tableNumber}`).join(', ') || 'Takeout',
+        orderType,
+        guestCount,
+        isUrgent,
+        createdAt: new Date().toISOString(),
+        items: cart.map((i) => ({
+          name: i.menuItem.name,
+          quantity: i.quantity,
+          priceCents: Number(i.menuItem.price || 0),
+          courseNumber: i.courseNumber,
+          seatNumber: i.seatNumber,
+          modifiers: i.menuItem.modifiers
+            .filter((m) => i.modifierIds.includes(m.id))
+            .map((m) => ({ name: m.name })),
+          specialInstructions: i.specialInstructions,
+        })),
+      }).catch((e) => console.warn('Kitchen printer notice:', e))
+
       setCart([])
       setSelectedTables([])
       setIsUrgent(false)
@@ -472,6 +498,16 @@ export function POSClient() {
           >
             <Clock className="h-3.5 w-3.5 text-primary" />
             Time Clock
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setHardwareModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <Printer className="h-3.5 w-3.5 text-primary" />
+            Hardware
           </Button>
         </div>
       </div>
@@ -1035,6 +1071,11 @@ export function POSClient() {
         onSyncNow={offlineSync.syncNow}
         onClearSynced={offlineSync.clearSynced}
         onExportBackup={offlineSync.exportBackup}
+      />
+
+      <HardwareSettingsModal
+        open={hardwareModalOpen}
+        onOpenChange={setHardwareModalOpen}
       />
     </div>
   )
