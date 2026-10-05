@@ -9,6 +9,8 @@ import { enhanceFields } from "@/features/dashboard/utils/enhanceFields";
 import { useInvalidFields } from "@/features/dashboard/utils/useInvalidFields";
 import { serializeValueToOperationItem } from "@/features/dashboard/utils/useHasChanges";
 
+import { executeClientMutation } from "@/features/dashboard/lib/clientGraphQL";
+
 interface InlineCreateProps {
   list: any;
   fields: string[];
@@ -61,8 +63,11 @@ export function InlineCreate({
 
   const invalidFields = useInvalidFields(fields, value, isRequireds);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
     const newForceValidation = invalidFields.size !== 0;
     setForceValidation(newForceValidation);
@@ -75,13 +80,38 @@ export function InlineCreate({
       // Serialize field values for create operation
       const data = serializeValueToOperationItem("create", fields, value);
 
-      // Use the selectedFields passed from Cards component
-      const result = await createItemAction(list.key, data, selectedFields, {
-        skipRevalidation: true,
-      });
+      const hasFileUpload = Object.values(data).some(
+        (val: any) =>
+          val &&
+          typeof val === "object" &&
+          (val.upload instanceof File ||
+            (typeof Blob !== "undefined" && val.upload instanceof Blob) ||
+            val instanceof File ||
+            (typeof Blob !== "undefined" && val instanceof Blob))
+      );
+
+      let result: any;
+      if (hasFileUpload) {
+        const mutation = `
+          mutation ($data: ${list.key}CreateInput!) {
+            item: create${list.key}(data: $data) {
+              ${selectedFields}
+            }
+          }
+        `;
+        const res = await executeClientMutation(mutation, { data });
+        result = {
+          errors: res.errors || [],
+          data: res.data || null,
+        };
+      } else {
+        result = await createItemAction(list.key, data, selectedFields, {
+          skipRevalidation: true,
+        });
+      }
 
       // Check if there are no errors (success)
-      if (result.errors.length === 0) {
+      if (result.errors?.length === 0 && result.data?.item) {
         toast.success(
           `${
             result.data?.item?.label || result.data?.item?.id
@@ -91,11 +121,11 @@ export function InlineCreate({
       } else {
         // Handle errors
         const errorMessage =
-          result.errors[0]?.message || "Failed to create item";
+          result.errors?.[0]?.message || "Failed to create item";
         toast.error(errorMessage);
       }
-    } catch (error) {
-      toast.error("Failed to create item");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to create item");
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +133,7 @@ export function InlineCreate({
 
   return (
     <section>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-6">
         <div className="space-y-4">
           <Fields
             list={list}
@@ -120,11 +150,16 @@ export function InlineCreate({
           <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={isLoading}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={isLoading}
+            onClick={handleSubmit}
+          >
             {isLoading ? "Creating..." : `Create ${list.singular}`}
           </Button>
         </div>
-      </form>
+      </div>
     </section>
   );
 }

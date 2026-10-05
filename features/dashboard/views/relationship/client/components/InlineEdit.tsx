@@ -12,6 +12,8 @@ import {
   serializeValueToOperationItem,
 } from "@/features/dashboard/utils/useHasChanges";
 
+import { executeClientMutation } from "@/features/dashboard/lib/clientGraphQL";
+
 interface InlineEditProps {
   list: any;
   fields: string[];
@@ -91,8 +93,11 @@ export function InlineEdit({
 
   const invalidFields = useInvalidFields(fields, value, isRequireds);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
     if (!hasChanges) {
       onCancel();
@@ -113,10 +118,40 @@ export function InlineEdit({
         value,
         initialValue
       );
-      const result = await updateItemAction(list.key, item.id, dataForUpdate);
+
+      const hasFileUpload = Object.values(dataForUpdate).some(
+        (val: any) =>
+          val &&
+          typeof val === "object" &&
+          (val.upload instanceof File ||
+            (typeof Blob !== "undefined" && val.upload instanceof Blob) ||
+            val instanceof File ||
+            (typeof Blob !== "undefined" && val instanceof Blob))
+      );
+
+      let result: any;
+      if (hasFileUpload) {
+        const mutation = `
+          mutation ($id: ID!, $data: ${list.key}UpdateInput!) {
+            item: update${list.key}(where: { id: $id }, data: $data) {
+              id
+            }
+          }
+        `;
+        const res = await executeClientMutation(mutation, {
+          id: item.id,
+          data: dataForUpdate,
+        });
+        result = {
+          errors: res.errors || [],
+          data: res.data || null,
+        };
+      } else {
+        result = await updateItemAction(list.key, item.id, dataForUpdate);
+      }
 
       // Check if there are no errors (success)
-      if (result.errors.length === 0) {
+      if (result.errors?.length === 0) {
         toast.success(`${item.label || item.id} updated successfully`);
         // Merge the updated data with the original item
         const updatedItem = { ...item, ...dataForUpdate };
@@ -124,11 +159,11 @@ export function InlineEdit({
       } else {
         // Handle errors
         const errorMessage =
-          result.errors[0]?.message || "Failed to update item";
+          result.errors?.[0]?.message || "Failed to update item";
         toast.error(errorMessage);
       }
-    } catch (error) {
-      toast.error("Failed to update item");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update item");
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +171,7 @@ export function InlineEdit({
 
   return (
     <section>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-6">
         <div className="space-y-4">
           <Fields
             list={list}
@@ -154,11 +189,16 @@ export function InlineEdit({
           <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={isLoading}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={isLoading}
+            onClick={handleSubmit}
+          >
             {isLoading ? "Saving..." : "Save"}
           </Button>
         </div>
-      </form>
+      </div>
     </section>
   );
 }

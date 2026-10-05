@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { gql, request } from "graphql-request";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Layers, ChevronRight, Utensils } from "lucide-react";
+import { Plus, Edit2, Layers, ChevronRight, Utensils, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageBreadcrumbs } from "@/features/dashboard/components/PageBreadcrumbs";
 import { formatCurrency } from "@/features/storefront/lib/currency";
 import { EditItemDrawerClientWrapper } from "@/features/platform/components/EditItemDrawerClientWrapper";
 import { CreateItemDrawerClientWrapper } from "@/features/platform/components/CreateItemDrawerClientWrapper";
+import { MenuItemPhotoModal } from "@/features/platform/menu/components/MenuItemPhotoModal";
 
 const GET_MENU_DATA = gql`
   query GetMenuData {
@@ -29,6 +30,7 @@ export function MenuArchitectPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategoryId, setActiveCategoryId] = useState<string>("all");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [photoModalItem, setPhotoModalItem] = useState<any>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createListKey, setCreateListKey] = useState<string>("menu-items");
 
@@ -196,7 +198,7 @@ export function MenuArchitectPage() {
                     )}
                   >
                     {/* Image */}
-                    <div className="aspect-video bg-muted overflow-hidden">
+                    <div className="aspect-video bg-muted overflow-hidden relative group/img">
                       {imageSrc ? (
                         <img
                           src={imageSrc}
@@ -208,6 +210,18 @@ export function MenuArchitectPage() {
                           <Utensils size={20} className="text-muted-foreground/20" />
                         </div>
                       )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPhotoModalItem(item);
+                        }}
+                        className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-xs font-medium cursor-pointer"
+                        title="Set image"
+                      >
+                        <ImageIcon size={14} />
+                        {imageSrc ? "Change Photo" : "Add Photo"}
+                      </button>
                     </div>
 
                     {/* Info */}
@@ -245,9 +259,17 @@ export function MenuArchitectPage() {
                         </div>
                       )}
 
-                      {/* Edit button */}
-                      <div className="mt-auto pt-2 border-t border-border">
+                      {/* Action buttons */}
+                      <div className="mt-auto pt-2 border-t border-border flex items-center justify-between gap-2">
                         <button
+                          type="button"
+                          onClick={() => setPhotoModalItem(item)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <ImageIcon size={11} /> Photo
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setEditingItemId(item.id)}
                           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
@@ -291,6 +313,13 @@ export function MenuArchitectPage() {
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onCreate={() => fetchData()}
+      />
+
+      <MenuItemPhotoModal
+        item={photoModalItem}
+        open={!!photoModalItem}
+        onClose={() => setPhotoModalItem(null)}
+        onSaved={() => fetchData()}
       />
     </div>
   );

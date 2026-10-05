@@ -220,17 +220,31 @@ export default withAuth(
     },
     lists: models,
     storage: {
-      my_images: {
-        kind: "s3",
-        type: "image",
-        bucketName,
-        region,
-        accessKeyId,
-        secretAccessKey,
-        endpoint,
-        signed: { expiry: 5000 },
-        forcePathStyle: true,
-      },
+      my_images:
+        runtimeConfig.storage.kind === "local" ||
+        !bucketName ||
+        bucketName === "keystone-test" ||
+        (endpoint?.includes("digitaloceanspaces.com") && accessKeyId === "keystone")
+          ? {
+              kind: "local",
+              type: "image",
+              generateUrl: (path: string) => `/images${path}`,
+              serverRoute: {
+                path: "/images",
+              },
+              storagePath: "public/images",
+            }
+          : {
+              kind: "s3",
+              type: "image",
+              bucketName,
+              region,
+              accessKeyId,
+              secretAccessKey,
+              endpoint,
+              signed: { expiry: 5000 },
+              forcePathStyle: true,
+            },
     },
     ui: {
       isAccessAllowed: ({ session }) => permissions.canAccessDashboard({ session }),

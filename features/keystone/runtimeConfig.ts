@@ -20,13 +20,28 @@ export function getRuntimeConfig() {
     throw new Error("DATABASE_URL must use PostgreSQL for this deployment");
   }
 
-  const storage = {
-    bucketName: requiredProductionEnv("S3_BUCKET_NAME", process.env.S3_BUCKET_NAME) || "keystone-test",
-    region: requiredProductionEnv("S3_REGION", process.env.S3_REGION) || "ap-southeast-2",
-    accessKeyId: requiredProductionEnv("S3_ACCESS_KEY_ID", process.env.S3_ACCESS_KEY_ID) || "keystone",
-    secretAccessKey: requiredProductionEnv("S3_SECRET_ACCESS_KEY", process.env.S3_SECRET_ACCESS_KEY) || "keystone",
-    endpoint: requiredProductionEnv("S3_ENDPOINT", process.env.S3_ENDPOINT) || "https://sfo3.digitaloceanspaces.com",
-  };
+  const isLocalStorage =
+    process.env.STORAGE_KIND === "local" ||
+    !process.env.S3_BUCKET_NAME ||
+    process.env.S3_BUCKET_NAME === "keystone-test";
+
+  const storage = isLocalStorage
+    ? {
+        kind: "local" as const,
+        bucketName: "local",
+        region: "local",
+        accessKeyId: "local",
+        secretAccessKey: "local",
+        endpoint: "local",
+      }
+    : {
+        kind: "s3" as const,
+        bucketName: requiredProductionEnv("S3_BUCKET_NAME", process.env.S3_BUCKET_NAME) || "keystone-test",
+        region: requiredProductionEnv("S3_REGION", process.env.S3_REGION) || "ap-southeast-2",
+        accessKeyId: requiredProductionEnv("S3_ACCESS_KEY_ID", process.env.S3_ACCESS_KEY_ID) || "keystone",
+        secretAccessKey: requiredProductionEnv("S3_SECRET_ACCESS_KEY", process.env.S3_SECRET_ACCESS_KEY) || "keystone",
+        endpoint: requiredProductionEnv("S3_ENDPOINT", process.env.S3_ENDPOINT) || "https://sfo3.digitaloceanspaces.com",
+      };
 
   if (production && sessionSecret === DEVELOPMENT_SESSION_SECRET) {
     throw new Error("A development session secret cannot be used in production");
