@@ -32,6 +32,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/openfront_restaurant
       SESSION_SECRET: openfront-restaurant-production-session-secret-super-secure-key-32chars
+      SEED_DATABASE: "true"
       DB_HOST: postgres
       DB_PORT: 5432
       PORT: 3000

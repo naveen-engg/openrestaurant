@@ -32,7 +32,8 @@ ENV HOSTNAME="0.0.0.0"
 # Install global tools needed for entrypoint database migration & initial seed
 RUN npm install -g prisma@6.5.0 tsx@4.19.4
 
-# Copy minimal standalone build and static assets
+# Copy dependencies and standalone build
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
