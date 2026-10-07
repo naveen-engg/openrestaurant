@@ -70,7 +70,7 @@ export async function signIn(prevState: { message: string | null, formData: { em
     // Set the auth token cookie
     const cookieStore = await cookies();
     cookieStore.set('keystonejs-session', response.data.authenticate.sessionToken, {
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.COOKIE_SECURE === 'true',
       sameSite: 'lax',
       path: '/',
       httpOnly: true,

@@ -26,7 +26,7 @@ export const setAuthToken = async (token: string, options: CookieOptions = {}) =
     maxAge: 60 * 60 * 24 * 30,
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.COOKIE_SECURE === "true",
     path: "/",
     ...options
   })
@@ -46,8 +46,8 @@ export const setCartId = async (cartId: string, options: CookieOptions = {}) => 
   (await cookies()).set("_restaurant_cart_id", cartId, {
     maxAge: 60 * 60 * 24 * 7,
     httpOnly: true,
-    sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    secure: process.env.COOKIE_SECURE === "true",
     path: "/",
     ...options
   })

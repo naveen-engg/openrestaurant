@@ -30,7 +30,7 @@ export function statelessSessions({
   secret,
   maxAge = 60 * 60 * 24 * 360,
   path = "/",
-  secure = process.env.NODE_ENV === "production",
+  secure = process.env.COOKIE_SECURE === "true",
   ironOptions = Iron.defaults,
   domain,
   sameSite = "lax" as const,

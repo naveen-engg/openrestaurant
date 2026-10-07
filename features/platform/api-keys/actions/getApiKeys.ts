@@ -147,13 +147,20 @@ export async function createApiKey(data: {
   // Create preview from the token (first 8 chars + "...")
   const tokenPreview = data.tokenSecret.substring(0, 12) + "...";
 
-  const apiKeyData = {
+  const apiKeyData: Record<string, any> = {
     name: data.name,
     scopes: data.scopes,
-    expiresAt: data.expiresAt,
     tokenSecret: data.tokenSecret,
     tokenPreview,
   };
+
+  if (data.expiresAt && data.expiresAt.trim() !== "") {
+    try {
+      apiKeyData.expiresAt = new Date(data.expiresAt).toISOString();
+    } catch {
+      // ignore invalid date
+    }
+  }
 
   try {
     const response = await keystoneClient(query, { data: apiKeyData });

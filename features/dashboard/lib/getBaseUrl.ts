@@ -19,19 +19,22 @@ export async function getBaseUrl(): Promise<string> {
       
       // Try x-forwarded-host first (common in production deployments)
       const host = headersList.get('x-forwarded-host') || headersList.get('host');
-      const protocol = headersList.get('x-forwarded-proto') || 'https';
+      const protoHeader = headersList.get('x-forwarded-proto');
+      const isLocalOrIp = host && (host.includes('localhost') || /^\d+\.\d+\.\d+\.\d+/.test(host));
+      const protocol = protoHeader || (isLocalOrIp ? 'http' : (process.env.NODE_ENV === 'production' ? 'https' : 'http'));
 
       if (host) {
         return `${protocol}://${host}`;
       }
     } catch (e) {
-      // headers() might not be available in all contexts (e.g., API routes)
+      // headers() might not be available in all contexts (e.g., API routes, background)
       // Fall through to default
     }
   }
 
-  // Production fallback - return empty string and let relative URLs work
-  return '';
+  // Server-side fallback - return internal localhost origin so GraphQL requests succeed
+  const port = process.env.PORT || 3000;
+  return `http://127.0.0.1:${port}`;
 }
 
 /**

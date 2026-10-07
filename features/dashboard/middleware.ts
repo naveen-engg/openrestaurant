@@ -6,8 +6,9 @@ import { GraphQLClient, ClientError } from 'graphql-request';
 const basePath = "/dashboard";
 
 // Create a GraphQL client for middleware with explicit headers
-async function createMiddlewareGraphQLClient(headers: Record<string, string>): Promise<GraphQLClient> {
-  const endpoint = await getGraphQLEndpoint();
+async function createMiddlewareGraphQLClient(headers: Record<string, string>, request?: NextRequest): Promise<GraphQLClient> {
+  const origin = request ? request.nextUrl.origin : `http://127.0.0.1:${process.env.PORT || 3000}`;
+  const endpoint = `${origin}/api/graphql`;
   return new GraphQLClient(endpoint, {
     credentials: 'include',
     headers,
@@ -48,7 +49,7 @@ export async function checkInitStatus(request: NextRequest) {
   };
 
   try {
-    const client = await createMiddlewareGraphQLClient(headers);
+    const client = await createMiddlewareGraphQLClient(headers, request);
     const data = await client.request(query) as { redirectToInit: boolean };
     return data.redirectToInit;
   } catch (error) {
@@ -78,7 +79,7 @@ export async function getAuthenticatedUser(request: NextRequest) {
   };
 
   try {
-    const client = await createMiddlewareGraphQLClient(headers);
+    const client = await createMiddlewareGraphQLClient(headers, request);
     const data = await client.request(query) as { 
       authenticatedItem: any; 
       redirectToInit: boolean 
