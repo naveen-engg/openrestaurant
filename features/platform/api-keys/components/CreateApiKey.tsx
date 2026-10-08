@@ -299,61 +299,51 @@ export function CreateApiKey() {
     });
   };
 
+  const [copied, setCopied] = useState(false);
+
   const copyToClipboard = async () => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
+    if (!createdToken) return;
+
+    let success = false;
+
+    // 1. Try modern Clipboard API
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
         await navigator.clipboard.writeText(createdToken);
-        toast.success("API key copied to clipboard!");
-      } else {
-        // Fallback for mobile and older browsers
+        success = true;
+      } catch (err) {
+        // Continue to fallback
+      }
+    }
+
+    // 2. Fallback for non-HTTPS / IP addresses / legacy browsers
+    if (!success) {
+      try {
         const textArea = document.createElement("textarea");
         textArea.value = createdToken;
-        textArea.style.position = "absolute";
-        textArea.style.left = "-999999px";
-        textArea.style.top = "-999999px";
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.left = "0";
+        textArea.style.top = "0";
+        textArea.style.opacity = "0";
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
+        textArea.setSelectionRange(0, 99999);
         
-        try {
-          const successful = document.execCommand('copy');
-          if (successful) {
-            toast.success("API key copied to clipboard!");
-          } else {
-            throw new Error('Copy failed');
-          }
-        } finally {
-          document.body.removeChild(textArea);
-        }
+        success = document.execCommand("copy");
+        document.body.removeChild(textArea);
+      } catch (err) {
+        success = false;
       }
-    } catch (error) {
-      console.error('Failed to copy:', error);
-      // Final fallback - show the token in an alert for mobile
-      if (typeof window !== 'undefined' && 'navigator' in window && 'userAgent' in window.navigator) {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-          // For mobile, create a temporary input and try to select it
-          const input = document.createElement('input');
-          input.value = createdToken;
-          input.style.position = 'fixed';
-          input.style.top = '0';
-          input.style.left = '0';
-          input.style.opacity = '0';
-          input.style.pointerEvents = 'none';
-          document.body.appendChild(input);
-          input.focus();
-          input.select();
-          input.setSelectionRange(0, 99999); // For mobile devices
-          
-          toast.success("API key selected - press Ctrl+C (or Cmd+C) to copy");
-          
-          setTimeout(() => {
-            document.body.removeChild(input);
-          }, 3000);
-        } else {
-          toast.error("Unable to copy automatically. Please copy manually.");
-        }
-      }
+    }
+
+    if (success) {
+      setCopied(true);
+      toast.success("API key copied to clipboard!");
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.info("Please select the key and press Ctrl+C to copy");
     }
   };
 
@@ -364,6 +354,7 @@ export function CreateApiKey() {
         // Reset all state when dialog is closed
         setShowToken(false);
         setCreatedToken("");
+        setCopied(false);
         setFormData({
           name: "",
           scopes: [] as Option[],
@@ -443,38 +434,31 @@ export function CreateApiKey() {
             <DialogHeader>
               <DialogTitle>API Key Created</DialogTitle>
               <DialogDescription>
-                Your API key has been created. Copy it now - you won't be able to see it again.
+                Your API key has been created. Copy it now — you won't be able to see it again.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <div className="bg-muted/50 border rounded-md">
-                  <div className="p-1 flex items-center gap-3">
-                    <div className="flex gap-3 flex-1 min-w-0">
-                      <div className="flex-shrink-0">
-                        <div className="bg-background shadow-xs border rounded-sm py-0.5 px-1 text-[.65rem] text-muted-foreground font-medium">
-                          KEY
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-mono truncate max-w-[200px]">
-                          {createdToken}
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="rounded-sm h-6 w-6 flex-shrink-0"
-                      onClick={copyToClipboard}
-                    >
-                      <Copy className="size-3" />
-                      <span className="sr-only">Copy API Key</span>
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={createdToken}
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                    className="font-mono text-xs select-all bg-muted/30 cursor-pointer h-10 tracking-wide font-medium"
+                  />
+                  <Button
+                    type="button"
+                    variant={copied ? "default" : "outline"}
+                    size="sm"
+                    className="shrink-0 gap-1.5 h-10 px-3.5"
+                    onClick={copyToClipboard}
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span>{copied ? "Copied!" : "Copy"}</span>
+                  </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Make sure to copy your API key now. You won't be able to see it again!
+                  Make sure to copy your API key now. It is never displayed again.
                 </p>
               </div>
             </div>
