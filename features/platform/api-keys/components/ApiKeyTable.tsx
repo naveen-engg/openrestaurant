@@ -56,6 +56,9 @@ import { Badge } from "@/components/ui/badge"
 import MultipleSelector from "@/components/ui/multiple-selector"
 import { Option } from "@/components/ui/multiple-selector"
 import { EditItemDrawerClientWrapper } from "@/features/platform/components/EditItemDrawerClientWrapper"
+import { deleteApiKey, updateApiKey } from "../actions/getApiKeys"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 declare module "@tanstack/react-table" {
   //allows us to define custom properties for our columns
@@ -117,6 +120,7 @@ function getScopeAbbreviation(scope: string): string {
 }
 
 export function ApiKeyTable({ data }: ApiKeyTableProps) {
+  const router = useRouter()
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [sorting, setSorting] = useState<SortingState>([
     {
@@ -244,6 +248,37 @@ export function ApiKeyTable({ data }: ApiKeyTableProps) {
       cell: ({ row }) => {
         const apiKey = row.original
         
+        const handleRevoke = async () => {
+          try {
+            const res = await updateApiKey(apiKey.id, { status: "revoked" })
+            if (res.success) {
+              toast.success(`API key "${apiKey.name}" revoked`)
+              router.refresh()
+            } else {
+              toast.error(res.error || "Failed to revoke API key")
+            }
+          } catch (err) {
+            toast.error("Failed to revoke API key")
+          }
+        }
+
+        const handleDelete = async () => {
+          if (!window.confirm(`Are you sure you want to delete API key "${apiKey.name}"?`)) {
+            return
+          }
+          try {
+            const res = await deleteApiKey(apiKey.id)
+            if (res.success) {
+              toast.success(`API key "${apiKey.name}" deleted`)
+              router.refresh()
+            } else {
+              toast.error(res.error || "Failed to delete API key")
+            }
+          } catch (err) {
+            toast.error("Failed to delete API key")
+          }
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -262,21 +297,15 @@ export function ApiKeyTable({ data }: ApiKeyTableProps) {
                 Edit key
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {
-                  // Placeholder for revoke functionality
-                  console.log('Revoke API key:', apiKey.id)
-                }}
+                onClick={handleRevoke}
                 disabled={apiKey.status === 'revoked'}
               >
                 <ShieldOffIcon className="mr-2 h-4 w-4" />
                 Revoke key
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {
-                  // Placeholder for delete functionality
-                  console.log('Delete API key:', apiKey.id)
-                }}
-                className="text-destructive"
+                onClick={handleDelete}
+                className="text-destructive focus:text-destructive"
               >
                 <TrashIcon className="mr-2 h-4 w-4" />
                 Delete key
