@@ -4,9 +4,9 @@
 
 'use client'
 
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Key, Activity, Clock, Copy, Trash2, Terminal, Plus } from 'lucide-react'
+import { Key, Activity, Clock, Copy, Trash2, Terminal, Plus, ShieldOff, ShieldCheck } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -16,6 +16,8 @@ import { useListItemsQuery } from '@/features/dashboard/hooks/useListItems.query
 import { buildOrderByClause } from '@/features/dashboard/lib/buildOrderByClause'
 import { buildWhereClause } from '@/features/dashboard/lib/buildWhereClause'
 import { CreateApiKey } from './CreateApiKey'
+import { deleteApiKey, updateApiKey } from '../actions/getApiKeys'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 interface ApiKeyListPageClientProps {
@@ -37,6 +39,7 @@ export function ApiKeyListPageClient({
 }: ApiKeyListPageClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [loadingId, setLoadingId] = useState<string | null>(null)
 
   const currentSearchParams = useMemo(() => {
     const params: Record<string, string> = {}
@@ -66,7 +69,7 @@ export function ApiKeyListPageClient({
     createdAt updatedAt
   `
 
-  const { data: queryData, error: queryError } = useListItemsQuery(
+  const { data: queryData, error: queryError, refetch } = useListItemsQuery(
     { listKey: list.key, variables, selectedFields: querySelectedFields },
     { initialData: initialError ? undefined : initialData }
   )
@@ -77,6 +80,53 @@ export function ApiKeyListPageClient({
   const handleResetFilters = useCallback(() => {
     router.push(window.location.pathname)
   }, [router])
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete API key "${name}"? This action cannot be undone.`)) {
+      return
+    }
+    setLoadingId(id)
+    try {
+      const res = await deleteApiKey(id)
+      if (res.success) {
+        toast.success(`API key "${name}" deleted successfully`)
+        if (refetch) refetch()
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Failed to delete API key')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete API key')
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  const handleToggleRevoke = async (id: string, currentStatus: string, name: string) => {
+    const newStatus = currentStatus === 'revoked' ? 'active' : 'revoked'
+    setLoadingId(id)
+    try {
+      const res = await updateApiKey(id, { status: newStatus })
+      if (res.success) {
+        toast.success(`API key "${name}" is now ${newStatus}`)
+        if (refetch) refetch()
+        router.refresh()
+      } else {
+        toast.error(res.error || `Failed to update status to ${newStatus}`)
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update API key')
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
+  const handleCopyPreview = (tokenPreview: string) => {
+    if (tokenPreview) {
+      navigator.clipboard.writeText(tokenPreview)
+      toast.success('Token preview copied')
+    }
+  }
 
   const activeKeys = data?.items?.filter((k: any) => k.status === 'active').length || 0
   const totalRequests = data?.items?.reduce((sum: number, k: any) => sum + (k.usageCount || 0), 0) || 0
@@ -173,8 +223,10 @@ export function ApiKeyListPageClient({
                           {apiKey.tokenPreview || '••••••••••••••••••••••••••••'}
                         </code>
                         <button
-                          className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => navigator.clipboard.writeText(apiKey.tokenPreview || '')}
+                          type="button"
+                          className="ml-auto text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                          onClick={() => handleCopyPreview(apiKey.tokenPreview)}
+                          title="Copy preview"
                         >
                           <Copy size={11} />
                         </button>
@@ -205,10 +257,40 @@ export function ApiKeyListPageClient({
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="w-7 h-7 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-red-600 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-                        <Trash2 size={12} />
-                      </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs gap-1"
+                        disabled={loadingId === apiKey.id}
+                        onClick={() => handleToggleRevoke(apiKey.id, apiKey.status, apiKey.name)}
+                        title={apiKey.status === 'revoked' ? "Reactivate Key" : "Revoke Key"}
+                      >
+                        {apiKey.status === 'revoked' ? (
+                          <>
+                            <ShieldCheck size={13} className="text-emerald-500" />
+                            <span>Reactivate</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldOff size={13} className="text-amber-500" />
+                            <span>Revoke</span>
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                        disabled={loadingId === apiKey.id}
+                        onClick={() => handleDelete(apiKey.id, apiKey.name)}
+                        title="Delete API Key"
+                      >
+                        <Trash2 size={13} />
+                        <span>Delete</span>
+                      </Button>
                     </div>
                   </div>
                 </div>
