@@ -139,7 +139,7 @@ export async function seedDatabase() {
     }
   }
 
-  // 5. Menu Items with Stations
+  // 5. Menu Items with Stations & Photos
   const itemsToCreate = [
     {
       name: 'Classic Cheeseburger',
@@ -147,6 +147,23 @@ export async function seedDatabase() {
       price: 1400,
       station: 'hot_line',
       kitchenStation: 'grill',
+      imagePath: '/images/classic-hamburger-with-lettuce-tomato.jpg',
+    },
+    {
+      name: 'Double Cheeseburger',
+      category: 'Food',
+      price: 1750,
+      station: 'hot_line',
+      kitchenStation: 'grill',
+      imagePath: '/images/double-cheeseburger-with-sauce-and-toppings.jpg',
+    },
+    {
+      name: 'Bacon BBQ Burger',
+      category: 'Food',
+      price: 1650,
+      station: 'hot_line',
+      kitchenStation: 'grill',
+      imagePath: '/images/bacon-bbq-burger-onion-rings.png',
     },
     {
       name: 'Prime Ribeye Steak',
@@ -154,6 +171,7 @@ export async function seedDatabase() {
       price: 3400,
       station: 'hot_line',
       kitchenStation: 'grill',
+      imagePath: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&auto=format&fit=crop&q=80',
     },
     {
       name: 'Artisan Wagyu Burger',
@@ -161,6 +179,31 @@ export async function seedDatabase() {
       price: 1850,
       station: 'hot_line',
       kitchenStation: 'grill',
+      imagePath: '/images/western-burger-with-bbq-and-bacon.jpg',
+    },
+    {
+      name: 'Mushroom Swiss Burger',
+      category: 'Food',
+      price: 1600,
+      station: 'hot_line',
+      kitchenStation: 'grill',
+      imagePath: '/images/mushroom-swiss-burger.png',
+    },
+    {
+      name: 'Crispy Chicken Sandwich',
+      category: 'Food',
+      price: 1450,
+      station: 'hot_line',
+      kitchenStation: 'fryer',
+      imagePath: '/images/crispy-chicken-sandwich-with-pickles.jpg',
+    },
+    {
+      name: 'Chicken Tenders Basket',
+      category: 'Food',
+      price: 1300,
+      station: 'hot_line',
+      kitchenStation: 'fryer',
+      imagePath: '/images/chicken-tenders-basket.jpg',
     },
     {
       name: 'Crispy French Fries',
@@ -168,6 +211,23 @@ export async function seedDatabase() {
       price: 600,
       station: 'hot_line',
       kitchenStation: 'fryer',
+      imagePath: '/images/golden-french-fries.jpg',
+    },
+    {
+      name: 'Loaded Fries',
+      category: 'Food',
+      price: 850,
+      station: 'hot_line',
+      kitchenStation: 'fryer',
+      imagePath: '/images/loaded-fries.png',
+    },
+    {
+      name: 'Crispy Onion Rings',
+      category: 'Food',
+      price: 700,
+      station: 'hot_line',
+      kitchenStation: 'fryer',
+      imagePath: '/images/crispy-onion-rings.png',
     },
     {
       name: 'Caesar Salad',
@@ -175,6 +235,7 @@ export async function seedDatabase() {
       price: 1100,
       station: 'cold_prep',
       kitchenStation: 'salad',
+      imagePath: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=800&auto=format&fit=crop&q=80',
     },
     {
       name: 'Craft IPA Beer',
@@ -182,6 +243,7 @@ export async function seedDatabase() {
       price: 750,
       station: 'bar',
       kitchenStation: 'bar',
+      imagePath: 'https://images.unsplash.com/photo-1608270105072-c2084931a74d?w=800&auto=format&fit=crop&q=80',
     },
     {
       name: 'Old Fashioned Cocktail',
@@ -189,6 +251,23 @@ export async function seedDatabase() {
       price: 1400,
       station: 'bar',
       kitchenStation: 'bar',
+      imagePath: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&auto=format&fit=crop&q=80',
+    },
+    {
+      name: 'Fountain Soda',
+      category: 'Beverages',
+      price: 350,
+      station: 'bar',
+      kitchenStation: 'bar',
+      imagePath: '/images/fountain-soda-drink-cup.jpg',
+    },
+    {
+      name: 'Fresh Iced Tea',
+      category: 'Beverages',
+      price: 350,
+      station: 'bar',
+      kitchenStation: 'bar',
+      imagePath: '/images/iced-tea-glass.png',
     },
     {
       name: 'Molten Chocolate Cake',
@@ -196,6 +275,23 @@ export async function seedDatabase() {
       price: 950,
       station: 'dessert',
       kitchenStation: 'dessert',
+      imagePath: '/images/brownie-sundae-with-ice-cream.jpg',
+    },
+    {
+      name: 'Warm Apple Pie a la Mode',
+      category: 'Dessert',
+      price: 900,
+      station: 'dessert',
+      kitchenStation: 'dessert',
+      imagePath: '/images/warm-apple-pie-with-ice-cream.jpg',
+    },
+    {
+      name: 'Thick Handspun Shake',
+      category: 'Dessert',
+      price: 750,
+      station: 'dessert',
+      kitchenStation: 'dessert',
+      imagePath: '/images/thick-milkshake-with-whipped-cream.jpg',
     },
   ]
 
@@ -203,13 +299,16 @@ export async function seedDatabase() {
   for (const item of itemsToCreate) {
     const existing = await sudo.query.MenuItem.findMany({
       where: { name: { equals: item.name } },
-      query: 'id name station',
+      query: 'id name station menuItemImages { id }',
     })
+    
+    let currentItem: any
     if (existing.length > 0) {
-      menuItemMap[item.name] = existing[0]
+      currentItem = existing[0]
+      menuItemMap[item.name] = currentItem
     } else {
       console.log(`Creating Menu Item: ${item.name} (${item.station})`)
-      menuItemMap[item.name] = await sudo.db.MenuItem.createOne({
+      currentItem = await sudo.db.MenuItem.createOne({
         data: {
           name: item.name,
           price: item.price,
@@ -219,6 +318,26 @@ export async function seedDatabase() {
           category: { connect: { id: categoryMap[item.category].id } },
         },
       })
+      menuItemMap[item.name] = currentItem
+    }
+
+    // Attach image if item does not already have an image attached
+    if (item.imagePath && (!currentItem.menuItemImages || currentItem.menuItemImages.length === 0)) {
+      const existingImg = await sudo.query.MenuItemImage.findMany({
+        where: { menuItems: { some: { id: { equals: currentItem.id } } } },
+        query: 'id',
+      }).catch(() => [])
+
+      if (existingImg.length === 0) {
+        console.log(`Attaching photo to ${item.name}: ${item.imagePath}`)
+        await sudo.db.MenuItemImage.createOne({
+          data: {
+            imagePath: item.imagePath,
+            altText: `${item.name} photo`,
+            menuItems: { connect: [{ id: currentItem.id }] },
+          },
+        })
+      }
     }
   }
 
