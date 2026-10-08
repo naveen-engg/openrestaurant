@@ -36,7 +36,8 @@ export const MenuItem = list({
       field: graphql.field({
         type: graphql.String,
         resolve: async (item, args, context) => {
-          const menuItem = await context.query.MenuItem.findOne({
+          const sudoContext = context.sudo ? context.sudo() : context;
+          const menuItem = await sudoContext.query.MenuItem.findOne({
             where: { id: String(item.id) },
             query: "menuItemImages(take: 1) { image { url } imagePath }",
           });
