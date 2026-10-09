@@ -39,6 +39,7 @@ import { calculateItemPriceWithModifiers } from '@/features/keystone/modifierUti
 import { TimeClockModal } from '@/features/platform/staff/components/TimeClockModal'
 import { HardwareSettingsModal } from '@/features/platform/hardware/components/HardwareSettingsModal'
 import { printKitchen } from '@/features/platform/hardware/printerService'
+import { formatCurrency } from '@/features/storefront/lib/currency'
 import { OfflineBanner, OfflineStatusPill } from '../components/OfflineBanner'
 import { OfflineSyncModal } from '../components/OfflineSyncModal'
 import { useOfflineSync } from '../offline/useOfflineSync'
@@ -137,21 +138,6 @@ const CREATE_POS_ORDER = gql`
   }
 `
 
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-    (cents || 0) / 100
-  )
-}
-
-const courseColors = { 1: 'bg-amber-500', 2: 'bg-orange-500', 3: 'bg-rose-500' } as const
-const courseLabels = { 1: 'C1', 2: 'C2', 3: 'C3' } as const
-
-const breadcrumbs = [
-  { type: 'link' as const, label: 'Dashboard', href: '' },
-  { type: 'page' as const, label: 'Platform' },
-  { type: 'page' as const, label: 'Point of Sale' },
-]
-
 export function POSClient() {
   const [data, setData] = useState<{
     tables: Table[]
@@ -159,6 +145,15 @@ export function POSClient() {
     items: MenuItem[]
     storeSettings: { taxRate?: string | null; currencyCode?: string | null; locale?: string | null } | null
   }>({ tables: [], categories: [], items: [], storeSettings: null })
+
+  const currencyConfig = React.useMemo(() => ({
+    currencyCode: data.storeSettings?.currencyCode || 'USD',
+    locale: data.storeSettings?.locale || 'en-US',
+  }), [data.storeSettings])
+
+  const formatMoney = (cents: number) => {
+    return formatCurrency(cents, currencyConfig)
+  }
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [orderType, setOrderType] = useState<'dine_in' | 'takeout'>('dine_in')
@@ -1071,6 +1066,8 @@ export function POSClient() {
         onSyncNow={offlineSync.syncNow}
         onClearSynced={offlineSync.clearSynced}
         onExportBackup={offlineSync.exportBackup}
+        currencyCode={currencyConfig.currencyCode}
+        locale={currencyConfig.locale}
       />
 
       <HardwareSettingsModal

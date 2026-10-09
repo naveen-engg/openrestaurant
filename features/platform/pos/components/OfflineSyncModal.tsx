@@ -24,6 +24,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { OfflineOrderPayload } from '../offline/offlineStorage'
+import { formatCurrency } from '@/features/storefront/lib/currency'
 
 interface OfflineSyncModalProps {
   open: boolean
@@ -35,6 +36,8 @@ interface OfflineSyncModalProps {
   onSyncNow: () => Promise<any>
   onClearSynced: () => Promise<number>
   onExportBackup: () => Promise<void>
+  currencyCode?: string
+  locale?: string
 }
 
 export function OfflineSyncModal({
@@ -47,6 +50,8 @@ export function OfflineSyncModal({
   onSyncNow,
   onClearSynced,
   onExportBackup,
+  currencyCode = 'USD',
+  locale = 'en-US',
 }: OfflineSyncModalProps) {
   const [clearing, setClearing] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -82,7 +87,7 @@ export function OfflineSyncModal({
   }
 
   const formatCents = (cents: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
+    return formatCurrency(cents, { currencyCode, locale })
   }
 
   return (
