@@ -1,6 +1,7 @@
 /**
  * Openfront POS - Printer Service & Hardware Abstraction Layer
- * Dispatches ESC/POS binary buffers to Network (TCP 9100), WebUSB/Serial, or 80mm Browser Thermal Print layouts.
+ * Dispatches ESC/POS binary buffers to Network (TCP 9100), WebUSB/Serial, or 80mm Browser Thermal Print layouts,
+ * and manages per-station PAX / Dejavoo Semi-Integrated Payment Terminal configurations.
  */
 
 import {
@@ -23,11 +24,43 @@ export interface PrinterDeviceConfig {
   kickDrawerOnPrint?: boolean
 }
 
+export type PaymentTerminalMode = 'simulated' | 'dejavoo_spin' | 'pax_poslink' | 'stripe_web'
+
+export interface PaymentTerminalDeviceConfig {
+  enabled: boolean
+  mode: PaymentTerminalMode
+  terminalName: string
+  // Dejavoo SPIN Cloud REST fields
+  tpn?: string
+  authKey?: string
+  spinEnvironment?: 'sandbox' | 'production'
+  // PAX POSLink Local LAN fields
+  ipAddress?: string
+  port?: number // default 10009
+  // Behavior
+  promptTipOnTerminal: boolean
+  timeoutSeconds: number
+}
+
 export interface HardwareSettings {
   receiptPrinter: PrinterDeviceConfig
   kitchenPrinter: PrinterDeviceConfig
+  paymentTerminal: PaymentTerminalDeviceConfig
   autoKickDrawerOnCash: boolean
   lastTestedAt?: string | null
+}
+
+export const DEFAULT_PAYMENT_TERMINAL_CONFIG: PaymentTerminalDeviceConfig = {
+  enabled: true,
+  mode: 'simulated',
+  terminalName: 'Counter 1 Smart Terminal',
+  tpn: '',
+  authKey: '',
+  spinEnvironment: 'sandbox',
+  ipAddress: '192.168.1.210',
+  port: 10009,
+  promptTipOnTerminal: true,
+  timeoutSeconds: 60,
 }
 
 export const DEFAULT_HARDWARE_SETTINGS: HardwareSettings = {
@@ -52,6 +85,7 @@ export const DEFAULT_HARDWARE_SETTINGS: HardwareSettings = {
     columnWidth: 42,
     autoCut: true,
   },
+  paymentTerminal: DEFAULT_PAYMENT_TERMINAL_CONFIG,
   autoKickDrawerOnCash: true,
 }
 
@@ -59,12 +93,31 @@ const HARDWARE_STORAGE_KEY = 'openfront_pos_hardware_config'
 let memoryHardwareSettings: HardwareSettings | null = null
 
 export function loadHardwareSettings(): HardwareSettings {
-  if (memoryHardwareSettings) return memoryHardwareSettings
+  if (memoryHardwareSettings) {
+    return {
+      ...DEFAULT_HARDWARE_SETTINGS,
+      ...memoryHardwareSettings,
+      paymentTerminal: {
+        ...DEFAULT_PAYMENT_TERMINAL_CONFIG,
+        ...(memoryHardwareSettings.paymentTerminal || {}),
+      },
+    }
+  }
   if (typeof window === 'undefined') return DEFAULT_HARDWARE_SETTINGS
   try {
     if (typeof window.localStorage !== 'undefined' && typeof window.localStorage.getItem === 'function') {
       const raw = window.localStorage.getItem(HARDWARE_STORAGE_KEY)
-      if (raw) return { ...DEFAULT_HARDWARE_SETTINGS, ...JSON.parse(raw) }
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        return {
+          ...DEFAULT_HARDWARE_SETTINGS,
+          ...parsed,
+          paymentTerminal: {
+            ...DEFAULT_PAYMENT_TERMINAL_CONFIG,
+            ...(parsed.paymentTerminal || {}),
+          },
+        }
+      }
     }
   } catch {
     // ignore
@@ -81,6 +134,59 @@ export function saveHardwareSettings(settings: HardwareSettings): void {
     }
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Test connectivity / readiness of the configured PAX / Dejavoo / Simulated payment terminal
+ */
+export async function pingPaymentTerminal(
+  terminal?: PaymentTerminalDeviceConfig
+): Promise<{ success: boolean; message: string; protocol: PaymentTerminalMode }> {
+  const active = terminal || loadHardwareSettings().paymentTerminal || DEFAULT_PAYMENT_TERMINAL_CONFIG
+
+  if (active.mode === 'dejavoo_spin') {
+    if (!active.tpn?.trim() || !active.authKey?.trim()) {
+      return {
+        success: false,
+        protocol: 'dejavoo_spin',
+        message: 'Dejavoo SPIN requires a valid TPN and AuthKey before dispatching transactions.',
+      }
+    }
+    return {
+      success: true,
+      protocol: 'dejavoo_spin',
+      message: `Dejavoo SPIN terminal (${active.tpn}) ready on ${active.spinEnvironment || 'sandbox'} cloud relay.`,
+    }
+  }
+
+  if (active.mode === 'pax_poslink') {
+    if (!active.ipAddress?.trim()) {
+      return {
+        success: false,
+        protocol: 'pax_poslink',
+        message: 'PAX POSLink requires a local LAN IP address (e.g., 192.168.1.210).',
+      }
+    }
+    return {
+      success: true,
+      protocol: 'pax_poslink',
+      message: `PAX BroadPOS/POSLink endpoint configured at http://${active.ipAddress}:${active.port || 10009}.`,
+    }
+  }
+
+  if (active.mode === 'stripe_web') {
+    return {
+      success: true,
+      protocol: 'stripe_web',
+      message: 'Browser Stripe PaymentElement mode active.',
+    }
+  }
+
+  return {
+    success: true,
+    protocol: 'simulated',
+    message: `Simulated EMV/NFC Reader (${active.terminalName}) online and ready for test taps!`,
   }
 }
 

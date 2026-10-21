@@ -32,11 +32,27 @@ export async function executeAdapterFunction({ provider, functionName, args }: {
   }
 }
 
-export async function createPayment({ provider, cart, order, amount, currency, idempotencyKey }: { provider: any; cart?: any; order?: any; amount: number; currency: string; idempotencyKey?: string }) {
+export async function createPayment({
+  provider,
+  cart,
+  order,
+  amount,
+  currency,
+  idempotencyKey,
+  terminalConfig,
+}: {
+  provider: any;
+  cart?: any;
+  order?: any;
+  amount: number;
+  currency: string;
+  idempotencyKey?: string;
+  terminalConfig?: any;
+}) {
   return executeAdapterFunction({
     provider,
     functionName: "createPaymentFunction",
-    args: { cart, order, amount, currency, idempotencyKey },
+    args: { cart, order, amount, currency, idempotencyKey, terminalConfig },
   });
 }
 
@@ -48,11 +64,25 @@ export async function capturePayment({ provider, paymentId, amount }: { provider
   });
 }
 
-export async function refundPayment({ provider, paymentId, amount, currency, idempotencyKey }: { provider: any; paymentId: string; amount: number; currency: string; idempotencyKey?: string }) {
+export async function refundPayment({
+  provider,
+  paymentId,
+  amount,
+  currency,
+  idempotencyKey,
+  terminalConfig,
+}: {
+  provider: any;
+  paymentId: string;
+  amount: number;
+  currency: string;
+  idempotencyKey?: string;
+  terminalConfig?: any;
+}) {
   return executeAdapterFunction({
     provider,
     functionName: "refundPaymentFunction",
-    args: { paymentId, amount, currency, idempotencyKey },
+    args: { paymentId, amount, currency, idempotencyKey, terminalConfig },
   });
 }
 

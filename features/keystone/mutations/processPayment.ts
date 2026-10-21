@@ -17,6 +17,7 @@ interface ProcessPaymentArgs {
   paymentMethod: string;
   tipAmount?: number;
   idempotencyKey: string;
+  terminalConfig?: Record<string, any> | null;
 }
 
 interface ProcessPaymentResult {
@@ -24,7 +25,12 @@ interface ProcessPaymentResult {
   paymentId: string | null;
   clientSecret: string | null;
   amount: number | null;
+  tipAmount?: number | null;
   remainingBalance: number | null;
+  cardBrand?: string | null;
+  last4?: string | null;
+  entryMode?: string | null;
+  authCode?: string | null;
   error: string | null;
 }
 
@@ -33,14 +39,31 @@ function cents(value: unknown): number {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
 }
 
-function providerCodeForMethod(method: string) {
+function providerCodeForMethod(method: string, terminalConfig?: Record<string, any> | null) {
   if (method === "cash") return "pp_system_default";
+  if (method === "card_terminal" || (terminalConfig && terminalConfig.protocol)) {
+    return "pp_terminal_terminal";
+  }
   if (["credit_card", "debit_card", "apple_pay", "google_pay"].includes(method)) {
     return "pp_stripe_stripe";
   }
   if (method === "paypal") return "pp_paypal_paypal";
   return null;
 }
+
+const DEFAULT_TERMINAL_PROVIDER = {
+  id: null,
+  code: "pp_terminal_terminal",
+  isInstalled: true,
+  createPaymentFunction: "terminal",
+  capturePaymentFunction: "terminal",
+  refundPaymentFunction: "terminal",
+  getPaymentStatusFunction: "terminal",
+  generatePaymentLinkFunction: "terminal",
+  handleWebhookFunction: "terminal",
+  credentials: {},
+  metadata: {},
+};
 
 async function getProvider(context: Context, code: string | null) {
   if (!code) return null;
@@ -49,7 +72,11 @@ async function getProvider(context: Context, code: string | null) {
     query: "id code isInstalled createPaymentFunction capturePaymentFunction refundPaymentFunction getPaymentStatusFunction generatePaymentLinkFunction handleWebhookFunction credentials metadata",
     take: 1,
   });
-  return providers[0] || null;
+  if (providers[0]) return providers[0];
+  if (code === "pp_terminal_terminal") {
+    return DEFAULT_TERMINAL_PROVIDER;
+  }
+  return null;
 }
 
 async function writeSaleEvidence(
@@ -97,7 +124,7 @@ export default async function processPayment(
 
   try {
     if (!args.idempotencyKey?.trim()) throw new Error("Idempotency key is required");
-    const providerCode = providerCodeForMethod(args.paymentMethod);
+    const providerCode = providerCodeForMethod(args.paymentMethod, args.terminalConfig);
     if (!providerCode || args.paymentMethod === "gift_card") {
       throw new Error(args.paymentMethod === "gift_card" ? "Use the atomic gift-card redemption operation" : "Unsupported payment method");
     }
@@ -255,7 +282,12 @@ export default async function processPayment(
         paymentId: reservation.payment.id,
         clientSecret: existingData.clientSecret || null,
         amount: cents(reservation.payment.amount),
+        tipAmount: cents(reservation.payment.tipAmount),
         remainingBalance: reservation.remainingBalance,
+        cardBrand: existingData.cardBrand || null,
+        last4: existingData.last4 || null,
+        entryMode: existingData.entryMode || null,
+        authCode: existingData.authCode || null,
         error: reservation.payment.errorMessage || null,
       };
     }
@@ -273,6 +305,7 @@ export default async function processPayment(
         paymentId: reservation.payment.id,
         clientSecret: null,
         amount: cents(reservation.payment.amount),
+        tipAmount: cents(reservation.payment.tipAmount),
         remainingBalance: reservation.remainingBalance,
         error: null,
       };
@@ -285,6 +318,7 @@ export default async function processPayment(
         amount: cents(reservation.payment.amount),
         currency: String(reservation.order.currencyCode || "USD").toLowerCase(),
         idempotencyKey: reservation.payment.idempotencyKey || args.idempotencyKey,
+        terminalConfig: args.terminalConfig || undefined,
       } as any);
       const providerPaymentId = providerResult?.paymentIntentId || providerResult?.orderId || providerResult?.paymentId || null;
       const status = providerResult?.status === "succeeded"
@@ -292,19 +326,44 @@ export default async function processPayment(
         : providerResult?.status === "requires_capture"
           ? "authorized"
           : "processing";
+
+      // Support on-terminal tip adjustments returned by PAX / Dejavoo / Simulated readers
+      const terminalAddedTip = cents(providerResult?.tipAmount);
+      const finalPaymentAmount =
+        terminalAddedTip > 0 && cents(providerResult?.amount) >= cents(reservation.payment.amount) + terminalAddedTip
+          ? cents(providerResult.amount)
+          : cents(reservation.payment.amount);
+      const finalTipAmount = cents(reservation.payment.tipAmount) + terminalAddedTip;
+
       const data = { ...providerResult, providerCode };
       await prisma.$transaction(async (tx: any) => {
         const updated = await tx.payment.update({
           where: { id: reservation.payment.id },
           data: {
             providerPaymentId: providerPaymentId || "",
+            amount: finalPaymentAmount,
+            tipAmount: finalTipAmount,
             data,
             status,
             processedAt: status === "succeeded" ? new Date() : undefined,
           },
         });
+        let updatedOrder = reservation.order;
+        if (terminalAddedTip > 0) {
+          updatedOrder = await tx.restaurantOrder.update({
+            where: { id: reservation.order.id },
+            data: {
+              tip: cents(reservation.order.tip) + terminalAddedTip,
+              total: cents(reservation.order.total) + terminalAddedTip,
+            },
+          });
+        }
         if (status === "succeeded") {
-          await writeSaleEvidence(tx, context.session?.itemId, { ...reservation, payment: updated });
+          await writeSaleEvidence(tx, context.session?.itemId, {
+            ...reservation,
+            order: updatedOrder,
+            payment: updated,
+          });
           if (reservation.remainingBalance === 0) {
             await finalizePaidOrderWithClient(tx, reservation.order.id, context.session?.itemId);
           }
@@ -323,8 +382,13 @@ export default async function processPayment(
         success: true,
         paymentId: reservation.payment.id,
         clientSecret: providerResult?.clientSecret || null,
-        amount: cents(reservation.payment.amount),
+        amount: finalPaymentAmount,
+        tipAmount: finalTipAmount,
         remainingBalance: reservation.remainingBalance,
+        cardBrand: providerResult?.cardBrand || null,
+        last4: providerResult?.last4 || null,
+        entryMode: providerResult?.entryMode || null,
+        authCode: providerResult?.authCode || null,
         error: null,
       };
     } catch (error) {

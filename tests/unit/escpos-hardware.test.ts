@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   ESCPOSBuilder,
   buildCustomerReceipt,
@@ -12,10 +12,19 @@ import {
   renderKitchenTicketHTML,
   loadHardwareSettings,
   saveHardwareSettings,
+  pingPaymentTerminal,
   DEFAULT_HARDWARE_SETTINGS,
 } from '@/features/platform/hardware/printerService'
+import {
+  createPaymentFunction as createTerminalPayment,
+  refundPaymentFunction as refundTerminalPayment,
+} from '@/features/integrations/payment/terminal'
 
 describe('Stage 8: Hardware Integrations & Direct ESC/POS Printing (Unit Tests)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('generates standard ESC/POS control byte sequences', () => {
     const builder = new ESCPOSBuilder(42)
     const bytes = builder
@@ -214,11 +223,147 @@ describe('Stage 8: Hardware Integrations & Direct ESC/POS Printing (Unit Tests)'
         ipAddress: '192.168.1.150',
         columnWidth: 48,
       },
+      paymentTerminal: {
+        ...DEFAULT_HARDWARE_SETTINGS.paymentTerminal,
+        mode: 'pax_poslink' as const,
+        ipAddress: '192.168.1.222',
+        port: 10009,
+      },
     }
 
     saveHardwareSettings(customConfig)
     const loaded = loadHardwareSettings()
     expect(loaded.receiptPrinter.ipAddress).toBe('192.168.1.150')
     expect(loaded.receiptPrinter.columnWidth).toBe(48)
+    expect(loaded.paymentTerminal.mode).toBe('pax_poslink')
+    expect(loaded.paymentTerminal.ipAddress).toBe('192.168.1.222')
+  })
+
+  it('processes simulated EMV/NFC terminal transactions with on-terminal tip adjustment', async () => {
+    const res = await createTerminalPayment({
+      order: { id: 'ord_1', orderNumber: '1048' },
+      amount: 5000, // $50.00 base
+      currency: 'usd',
+      idempotencyKey: 'idem_1234',
+      terminalConfig: {
+        protocol: 'simulated',
+        simulatedOutcome: 'approved',
+        simulatedEntryMode: 'TAP',
+        simulatedCardBrand: 'VISA',
+        simulatedLast4: '4242',
+        simulatedTipCents: 1000, // $10.00 tip selected on terminal screen
+      },
+    })
+
+    expect(res.status).toBe('succeeded')
+    expect(res.baseAmount).toBe(5000)
+    expect(res.tipAmount).toBe(1000)
+    expect(res.amount).toBe(6000) // $60.00 total authorized
+    expect(res.cardBrand).toBe('VISA')
+    expect(res.last4).toBe('4242')
+    expect(res.entryMode).toBe('TAP')
+  })
+
+  it('dispatches Dejavoo SPIN Cloud REST sale payload and parses approved EMV response', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        GeneralResponse: { ResultCode: '0', StatusCode: '0000', AuthCode: 'DJV991' },
+        ReferenceId: 'spin_tx_991',
+        Amounts: { TotalAmount: 69.0, TipAmount: 9.0 },
+        CardData: { CardType: 'MasterCard', Last4: '8899', EntryType: 'Chip' },
+      }),
+    } as any)
+
+    const res = await createTerminalPayment({
+      order: { id: 'ord_2', orderNumber: '2002' },
+      amount: 6000,
+      currency: 'usd',
+      idempotencyKey: 'idem_spin_1',
+      terminalConfig: {
+        protocol: 'dejavoo_spin',
+        tpn: '123456789012',
+        authKey: 'secret_spin_key',
+        spinEnvironment: 'sandbox',
+      },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://test.spinpos.net/spin/v2/Payment/Sale',
+      expect.objectContaining({ method: 'POST' })
+    )
+    expect(res.status).toBe('succeeded')
+    expect(res.amount).toBe(6900)
+    expect(res.tipAmount).toBe(900)
+    expect(res.cardBrand).toBe('MASTERCARD')
+    expect(res.last4).toBe('8899')
+    expect(res.entryMode).toBe('CHIP')
+  })
+
+  it('dispatches PAX BroadPOS / POSLink local LAN HTTP sale payload and parses approval', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ResultCode: '000000',
+        ResponseCode: '00',
+        AmountInformation: { ApprovedAmount: '5500', TipAmount: '500' },
+        AccountInformation: { CardType: 'AMEX', Account: '378282246311005', EntryMode: 'TAP' },
+        HostInformation: { TransactionIdentifier: 'pax_tx_55', AuthCode: 'PAX777' },
+      }),
+    } as any)
+
+    const res = await createTerminalPayment({
+      order: { id: 'ord_3', orderNumber: '3003' },
+      amount: 5000,
+      currency: 'usd',
+      idempotencyKey: 'idem_pax_1',
+      terminalConfig: {
+        protocol: 'pax_poslink',
+        ipAddress: '192.168.1.210',
+        port: 10009,
+        promptTipOnTerminal: true,
+      },
+    })
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://192.168.1.210:10009/poslink/payment',
+      expect.objectContaining({ method: 'POST' })
+    )
+    expect(res.status).toBe('succeeded')
+    expect(res.amount).toBe(5500)
+    expect(res.tipAmount).toBe(500)
+    expect(res.cardBrand).toBe('AMEX')
+    expect(res.last4).toBe('1005')
+    expect(res.authCode).toBe('PAX777')
+  })
+
+  it('validates payment terminal readiness via pingPaymentTerminal', async () => {
+    const simPing = await pingPaymentTerminal({
+      enabled: true,
+      mode: 'simulated',
+      terminalName: 'Bar Reader',
+      promptTipOnTerminal: true,
+      timeoutSeconds: 60,
+    })
+    expect(simPing.success).toBe(true)
+
+    const invalidSpin = await pingPaymentTerminal({
+      enabled: true,
+      mode: 'dejavoo_spin',
+      terminalName: 'Counter Dejavoo',
+      tpn: '',
+      authKey: '',
+      promptTipOnTerminal: true,
+      timeoutSeconds: 60,
+    })
+    expect(invalidSpin.success).toBe(false)
+
+    const refundRes = await refundTerminalPayment({
+      paymentId: 'sim_term_1',
+      amount: 2500,
+      idempotencyKey: 'ref_1',
+    })
+    expect(refundRes.status).toBe('succeeded')
+    expect(refundRes.amount).toBe(2500)
   })
 })

@@ -19,21 +19,21 @@ import {
   Receipt,
   Utensils,
   DollarSign,
-  Bell,
-  RefreshCw,
+  CreditCard,
   CheckCircle2,
-  Sliders,
   Eye,
   Check,
+  Wifi,
 } from 'lucide-react'
 import {
   HardwareSettings,
+  PaymentTerminalMode,
   loadHardwareSettings,
   saveHardwareSettings,
   printReceipt,
   printKitchen,
   triggerCashDrawerKick,
-  renderReceiptHTML,
+  pingPaymentTerminal,
 } from '../printerService'
 import { ESCPOSReceiptData, ESCPOSKitchenTicketData } from '../escposGenerator'
 
@@ -43,6 +43,7 @@ interface HardwareSettingsModalProps {
   onTestPrintReceipt?: () => void
   onTestPrintKitchen?: () => void
   onTestKickDrawer?: () => void
+  onTestPaymentTerminal?: () => void
 }
 
 export function HardwareSettingsModal({
@@ -51,9 +52,10 @@ export function HardwareSettingsModal({
   onTestPrintReceipt,
   onTestPrintKitchen,
   onTestKickDrawer,
+  onTestPaymentTerminal,
 }: HardwareSettingsModalProps) {
   const [settings, setSettings] = useState<HardwareSettings>(loadHardwareSettings)
-  const [activeTab, setActiveTab] = useState<'receipt' | 'kitchen' | 'drawer' | 'preview'>('receipt')
+  const [activeTab, setActiveTab] = useState<'receipt' | 'kitchen' | 'drawer' | 'terminal' | 'preview'>('receipt')
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
 
@@ -170,6 +172,17 @@ export function HardwareSettingsModal({
     }
   }
 
+  const handleTestTerminal = async () => {
+    try {
+      setTesting(true)
+      const res = await pingPaymentTerminal(settings.paymentTerminal)
+      if (onTestPaymentTerminal) onTestPaymentTerminal()
+      setStatusMessage(res.message)
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-6">
@@ -179,7 +192,7 @@ export function HardwareSettingsModal({
             <DialogTitle className="text-lg font-bold">Hardware & ESC/POS Printers</DialogTitle>
           </div>
           <DialogDescription className="text-xs text-muted-foreground">
-            Configure direct ESC/POS thermal printers (80mm/58mm), network TCP ports (9100), and cash drawer kick triggers.
+            Configure direct ESC/POS thermal printers (80mm/58mm), network TCP ports (9100), cash drawer kick triggers, and PAX / Dejavoo EMV card terminals.
           </DialogDescription>
         </DialogHeader>
 
@@ -191,7 +204,7 @@ export function HardwareSettingsModal({
         )}
 
         <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid grid-cols-4 shrink-0 mb-3">
+          <TabsList className="grid grid-cols-5 shrink-0 mb-3">
             <TabsTrigger value="receipt" onClick={() => setActiveTab('receipt')} className="text-xs gap-1.5">
               <Receipt className="h-3.5 w-3.5" />
               Receipt Printer
@@ -203,6 +216,10 @@ export function HardwareSettingsModal({
             <TabsTrigger value="drawer" onClick={() => setActiveTab('drawer')} className="text-xs gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
               Cash Drawer
+            </TabsTrigger>
+            <TabsTrigger value="terminal" onClick={() => setActiveTab('terminal')} className="text-xs gap-1.5">
+              <CreditCard className="h-3.5 w-3.5" />
+              Card Terminal
             </TabsTrigger>
             <TabsTrigger value="preview" onClick={() => setActiveTab('preview')} className="text-xs gap-1.5">
               <Eye className="h-3.5 w-3.5" />
@@ -462,7 +479,209 @@ export function HardwareSettingsModal({
             </div>
           </TabsContent>
 
-          {/* TAB 4: Live Preview */}
+          {/* TAB 4: Card Terminal (PAX / Dejavoo / Simulated) */}
+          <TabsContent value="terminal" forceMount className={`flex-1 overflow-y-auto space-y-4 pr-1 ${activeTab !== 'terminal' ? 'hidden' : ''}`}>
+            <div className="space-y-3 p-3 rounded-lg border bg-card">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-bold">Card Terminal Protocol (BYO Processor)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Semi-integrated EMV/Tap/PIN terminal paired to this register
+                  </p>
+                </div>
+                <div className="flex gap-1.5 flex-wrap justify-end">
+                  {(
+                    [
+                      { id: 'simulated', label: 'Simulated' },
+                      { id: 'dejavoo_spin', label: 'Dejavoo SPIN' },
+                      { id: 'pax_poslink', label: 'PAX POSLink' },
+                      { id: 'stripe_web', label: 'Stripe Web' },
+                    ] as { id: PaymentTerminalMode; label: string }[]
+                  ).map((item) => (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      variant={settings.paymentTerminal?.mode === item.id ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          paymentTerminal: {
+                            ...prev.paymentTerminal,
+                            mode: item.id,
+                          },
+                        }))
+                      }
+                      className="text-xs h-7 font-semibold"
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <Label className="text-xs">Register Terminal Name</Label>
+                  <Input
+                    value={settings.paymentTerminal?.terminalName || ''}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        paymentTerminal: {
+                          ...prev.paymentTerminal,
+                          terminalName: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Counter 1 Smart Terminal"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Customer Tap Timeout (sec)</Label>
+                  <Input
+                    type="number"
+                    min={15}
+                    max={120}
+                    value={settings.paymentTerminal?.timeoutSeconds || 60}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        paymentTerminal: {
+                          ...prev.paymentTerminal,
+                          timeoutSeconds: Number(e.target.value) || 60,
+                        },
+                      }))
+                    }
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {settings.paymentTerminal?.mode === 'dejavoo_spin' && (
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                  <div>
+                    <Label className="text-xs">Dejavoo TPN (Terminal Profile Number)</Label>
+                    <Input
+                      value={settings.paymentTerminal?.tpn || ''}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          paymentTerminal: {
+                            ...prev.paymentTerminal,
+                            tpn: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="203948571029"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">SPIN Merchant AuthKey</Label>
+                    <Input
+                      type="password"
+                      value={settings.paymentTerminal?.authKey || ''}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          paymentTerminal: {
+                            ...prev.paymentTerminal,
+                            authKey: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Enter SPIN AuthKey"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {settings.paymentTerminal?.mode === 'pax_poslink' && (
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                  <div>
+                    <Label className="text-xs">PAX Terminal Local LAN IP</Label>
+                    <Input
+                      value={settings.paymentTerminal?.ipAddress || ''}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          paymentTerminal: {
+                            ...prev.paymentTerminal,
+                            ipAddress: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="192.168.1.210"
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">POSLink HTTP Port</Label>
+                    <Input
+                      type="number"
+                      value={settings.paymentTerminal?.port || 10009}
+                      onChange={(e) =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          paymentTerminal: {
+                            ...prev.paymentTerminal,
+                            port: Number(e.target.value) || 10009,
+                          },
+                        }))
+                      }
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2 border-t">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-semibold">Prompt Customer for Tip on Terminal Screen</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Displays 15% / 20% / 25% tip prompt on PAX / Dejavoo touchscreen before EMV tap
+                  </p>
+                </div>
+                <Switch
+                  checked={Boolean(settings.paymentTerminal?.promptTipOnTerminal)}
+                  onCheckedChange={(checked) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      paymentTerminal: {
+                        ...prev.paymentTerminal,
+                        promptTipOnTerminal: checked,
+                      },
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+              <div>
+                <div className="font-semibold text-xs">Verify Payment Terminal Readiness</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Tests connection parameters for {settings.paymentTerminal?.terminalName || 'Card Terminal'}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTestTerminal}
+                disabled={testing}
+                className="text-xs h-8 gap-1.5 font-bold"
+              >
+                <Wifi className="h-3.5 w-3.5" />
+                Test Terminal Connection
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* TAB 5: Live Preview */}
           <TabsContent value="preview" forceMount className={`flex-1 overflow-y-auto pr-1 ${activeTab !== 'preview' ? 'hidden' : ''}`}>
             <div className="p-3 rounded-lg border bg-muted/20 flex flex-col items-center">
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
@@ -528,6 +747,7 @@ export function HardwareSettingsModal({
           <Button
             type="button"
             variant="outline"
+            variant-size="sm"
             size="sm"
             onClick={() => onOpenChange(false)}
             className="text-xs h-8"

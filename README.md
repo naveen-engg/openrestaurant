@@ -58,6 +58,12 @@ Open Restaurant is a modern, enterprise-grade open-source restaurant management 
 - **Cash Drawer Kick**: Hardware pulses sent via printer kick pin (`27, 112, 0, 25, 250`).
 - **Station Hardware Preferences**: Configure network, USB, or local printing destinations per workstation.
 
+### 10. Semi-Integrated Card Terminals & Payment Providers
+- **Bring-Your-Own-Processor (PAX & Dejavoo)**: Native support for **Dejavoo SPIN (Cloud REST)** and **PAX BroadPOS / POSLink (Local LAN HTTP)** semi-integrated EMV/NFC terminals with zero PCI scope.
+- **On-Terminal Tipping & Multi-Register Routing**: Automatically reconciles tips selected by guests on the terminal touchscreen into the POS check.
+- **Built-In Hardware Simulator**: Interactive virtual PAX/Dejavoo terminal screen for testing EMV chip, NFC tap, and decline flows without physical hardware.
+- **Documentation**: See **[PAYMENT_PROVIDERS.md](PAYMENT_PROVIDERS.md)** for full setup and hardware configuration details.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack

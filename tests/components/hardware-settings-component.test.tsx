@@ -20,6 +20,7 @@ describe('Stage 8: Hardware Settings & Direct Printing (Component Tests)', () =>
     expect(screen.getByRole('tab', { name: /Receipt Printer/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Kitchen Printer/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Cash Drawer/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Card Terminal/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Live Preview/i })).toBeInTheDocument()
 
     // Default receipt printer options
@@ -60,6 +61,27 @@ describe('Stage 8: Hardware Settings & Direct Printing (Component Tests)', () =>
     await waitFor(() => {
       expect(handleKick).toHaveBeenCalledTimes(1)
       expect(screen.getByText(/Cash drawer kick pulse sent/i)).toBeInTheDocument()
+    })
+  })
+
+  it('switches to Card Terminal tab and configures PAX / Dejavoo / Simulated readers', async () => {
+    const handleTerminalTest = vi.fn()
+    render(
+      <HardwareSettingsModal
+        open={true}
+        onOpenChange={vi.fn()}
+        onTestPaymentTerminal={handleTerminalTest}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: /Card Terminal/i }))
+    expect(screen.getByText(/Card Terminal Protocol \(BYO Processor\)/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Dejavoo SPIN/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /PAX POSLink/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Test Terminal Connection/i }))
+    await waitFor(() => {
+      expect(handleTerminalTest).toHaveBeenCalledTimes(1)
     })
   })
 

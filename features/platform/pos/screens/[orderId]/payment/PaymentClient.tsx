@@ -16,6 +16,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -42,8 +43,10 @@ import {
   Receipt,
   Utensils,
   CheckCircle2,
-  AlertCircle,
-  ArrowRight,
+  Wifi,
+  Smartphone,
+  Settings2,
+  XCircle,
 } from 'lucide-react'
 import { gql, request } from 'graphql-request'
 import { formatCurrency, fromMinorUnits, toMinorUnits } from '@/features/storefront/lib/currency'
@@ -59,6 +62,12 @@ import {
   type SeatBill,
   type SplitSeatItem,
 } from '@/features/platform/pos/splitUtils'
+import {
+  loadHardwareSettings,
+  PaymentTerminalDeviceConfig,
+  DEFAULT_PAYMENT_TERMINAL_CONFIG,
+} from '@/features/platform/hardware/printerService'
+import { HardwareSettingsModal } from '@/features/platform/hardware/components/HardwareSettingsModal'
 
 interface OrderItem {
   id: string
@@ -175,15 +184,33 @@ const SPLIT_CHECK_BY_GUEST = gql`
 `
 
 const PROCESS_PAYMENT = gql`
-  mutation ProcessPayment($orderId: String!, $amount: Int, $paymentMethod: String!, $tipAmount: Int, $idempotencyKey: String!) {
+  mutation ProcessPayment(
+    $orderId: String!
+    $amount: Int
+    $paymentMethod: String!
+    $tipAmount: Int
+    $idempotencyKey: String!
+    $terminalConfig: JSON
+  ) {
     processPayment(
       orderId: $orderId
       amount: $amount
       paymentMethod: $paymentMethod
       tipAmount: $tipAmount
       idempotencyKey: $idempotencyKey
+      terminalConfig: $terminalConfig
     ) {
-      success paymentId clientSecret amount remainingBalance error
+      success
+      paymentId
+      clientSecret
+      amount
+      tipAmount
+      remainingBalance
+      cardBrand
+      last4
+      entryMode
+      authCode
+      error
     }
   }
 `
@@ -264,6 +291,23 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
   const [stripePublishableKey, setStripePublishableKey] = useState<string | null>(null)
   const [cardSession, setCardSession] = useState<{ clientSecret: string; paymentId: string; splitId?: string } | null>(null)
 
+  // Hardware Payment Terminal state (Option C: PAX / Dejavoo / Simulated)
+  const [terminalConfig, setTerminalConfig] = useState<PaymentTerminalDeviceConfig>(DEFAULT_PAYMENT_TERMINAL_CONFIG)
+  const [hardwareModalOpen, setHardwareModalOpen] = useState(false)
+  const [terminalSession, setTerminalSession] = useState<{
+    amountCents: number
+    splitId?: string
+    label?: string
+  } | null>(null)
+  const [terminalTipPreset, setTerminalTipPreset] = useState<number>(0) // percentage 0, 15, 18, 20
+  const [terminalError, setTerminalError] = useState<string | null>(null)
+  const [lastTerminalApproval, setLastTerminalApproval] = useState<{
+    cardBrand?: string
+    last4?: string
+    entryMode?: string
+    authCode?: string
+  } | null>(null)
+
   // Cash payment state
   const [cashReceived, setCashReceived] = useState<string>('')
 
@@ -297,6 +341,10 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
   }
 
   useEffect(() => {
+    const hw = loadHardwareSettings()
+    if (hw?.paymentTerminal) {
+      setTerminalConfig(hw.paymentTerminal)
+    }
     fetchOrder()
   }, [orderId])
 
@@ -403,7 +451,7 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
     }
   }
 
-  // Card payment
+  // Card payment via Stripe Web Form
   const processCardPayment = async () => {
     if (!order) return
 
@@ -436,6 +484,95 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
       alert('Failed to process card payment')
     } finally {
       setProcessing(false)
+    }
+  }
+
+  // Execute Physical or Simulated Terminal Payment (Option C: PAX / Dejavoo / Simulated)
+  const executeTerminalCharge = async (options?: {
+    amountOverrideCents?: number
+    splitId?: string
+    simulatedOutcome?: 'approved' | 'declined'
+    simulatedEntryMode?: 'TAP' | 'CHIP' | 'SWIPE'
+    simulatedCardBrand?: 'VISA' | 'MASTERCARD' | 'AMEX'
+    simulatedLast4?: string
+    onTerminalTipCents?: number
+  }) => {
+    if (!order) return
+
+    const baseAmountCents = options?.amountOverrideCents ?? terminalSession?.amountCents ?? getRemainingBalance()
+    const tipInCents = getDesiredTipCents()
+    const onTerminalTipCents = options?.onTerminalTipCents ?? 0
+
+    setProcessing(true)
+    setTerminalError(null)
+
+    try {
+      const scope = `terminal:${options?.splitId || 'full'}:${baseAmountCents}:${Date.now()}`
+      const result = await request('/api/graphql', PROCESS_PAYMENT, {
+        orderId: order.id,
+        amount: baseAmountCents,
+        paymentMethod: 'card_terminal',
+        tipAmount: tipInCents,
+        idempotencyKey: getAttemptKey(scope),
+        terminalConfig: {
+          protocol: terminalConfig.mode === 'stripe_web' ? 'simulated' : terminalConfig.mode,
+          terminalName: terminalConfig.terminalName,
+          tpn: terminalConfig.tpn,
+          authKey: terminalConfig.authKey,
+          spinEnvironment: terminalConfig.spinEnvironment,
+          ipAddress: terminalConfig.ipAddress,
+          port: terminalConfig.port,
+          promptTipOnTerminal: terminalConfig.promptTipOnTerminal,
+          timeoutSeconds: terminalConfig.timeoutSeconds,
+          simulatedOutcome: options?.simulatedOutcome || 'approved',
+          simulatedEntryMode: options?.simulatedEntryMode || 'TAP',
+          simulatedCardBrand: options?.simulatedCardBrand || 'VISA',
+          simulatedLast4: options?.simulatedLast4 || '4242',
+          simulatedTipCents: onTerminalTipCents,
+        },
+      })
+
+      const payload = (result as any).processPayment
+      if (payload?.success) {
+        setLastTerminalApproval({
+          cardBrand: payload.cardBrand || 'VISA',
+          last4: payload.last4 || '4242',
+          entryMode: payload.entryMode || 'TAP',
+          authCode: payload.authCode || 'APPROVED',
+        })
+        const activeSplitId = options?.splitId || terminalSession?.splitId
+        setTerminalSession(null)
+        setTerminalTipPreset(0)
+
+        if (activeSplitId) {
+          setSplitPayments((prev) =>
+            prev.map((p) => (p.id === activeSplitId ? { ...p, status: 'completed' } : p))
+          )
+        }
+
+        await fetchOrder()
+        if (Number(payload.remainingBalance || 0) === 0) {
+          setChangeAmount(0)
+          setSuccessDialogOpen(true)
+        }
+      } else {
+        setTerminalError(payload?.error || 'Card declined or terminal did not respond')
+      }
+    } catch (err: any) {
+      console.error('Error processing terminal payment:', err)
+      setTerminalError(err?.message || 'Terminal communication error')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const openTerminalPrompt = (amountCents: number, splitId?: string, label?: string) => {
+    setTerminalError(null)
+    setTerminalTipPreset(0)
+    setTerminalSession({ amountCents, splitId, label })
+    // If physical PAX or Dejavoo is configured, immediately dispatch the HTTP request to wake the reader
+    if (terminalConfig.mode === 'dejavoo_spin' || terminalConfig.mode === 'pax_poslink') {
+      executeTerminalCharge({ amountOverrideCents: amountCents, splitId })
     }
   }
 
@@ -606,6 +743,10 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
 
   const processSharePayment = async (amountInCents: number, method: 'cash' | 'card', label: string) => {
     if (!order || amountInCents <= 0) return
+    if (method === 'card' && terminalConfig.mode !== 'stripe_web') {
+      openTerminalPrompt(amountInCents, undefined, label)
+      return
+    }
     setProcessing(true)
     try {
       const result = await request('/api/graphql', PROCESS_PAYMENT, {
@@ -719,6 +860,11 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
         }
       )
     : []
+
+  const terminalSessionTipCents =
+    terminalSession && terminalConfig.promptTipOnTerminal && terminalTipPreset > 0
+      ? Math.round((terminalSession.amountCents * terminalTipPreset) / 100)
+      : 0
 
   return (
     <div className="flex h-[calc(100vh-200px)] gap-4 p-4">
@@ -868,8 +1014,18 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
 
       {/* Payment Methods */}
       <Card className="flex-1 flex flex-col">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle>Payment Method</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setHardwareModalOpen(true)}
+            className="text-xs gap-1.5 h-8"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Terminal & Hardware ({terminalConfig.mode.replace('_', ' ').toUpperCase()})
+          </Button>
         </CardHeader>
         <CardContent className="flex-1">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
@@ -958,36 +1114,126 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
               </Button>
             </TabsContent>
 
-            {/* Card Payment */}
+            {/* Card Payment (Supports Physical PAX/Dejavoo Terminal + Simulated Terminal + Stripe Web) */}
             <TabsContent value="card" className="flex-1 flex flex-col">
               <div className="space-y-4 flex-1">
-                <div>
-                  <Label>Amount to Charge</Label>
-                  <div className="text-3xl font-bold">{formatCurrency(remaining, currencyConfig)}</div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Amount to Charge</Label>
+                    <div className="text-3xl font-bold">{formatCurrency(remaining, currencyConfig)}</div>
+                  </div>
+                  <div className="flex gap-1.5 bg-muted p-1 rounded-lg">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={terminalConfig.mode !== 'stripe_web' ? 'default' : 'ghost'}
+                      className="text-xs h-7"
+                      onClick={() =>
+                        setTerminalConfig((prev) => ({
+                          ...prev,
+                          mode: prev.mode === 'stripe_web' ? 'simulated' : prev.mode,
+                        }))
+                      }
+                    >
+                      <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+                      Card Terminal (EMV/Tap)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={terminalConfig.mode === 'stripe_web' ? 'default' : 'ghost'}
+                      className="text-xs h-7"
+                      onClick={() =>
+                        setTerminalConfig((prev) => ({
+                          ...prev,
+                          mode: 'stripe_web',
+                        }))
+                      }
+                    >
+                      <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                      Web Card Form
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="p-8 border-2 border-dashed rounded-lg text-center">
-                  <CreditCard className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">Secure web card payment</p>
-                  <p className="text-sm text-muted-foreground">
-                    Uses the configured Stripe web payment form. This is not a card-present terminal.
-                  </p>
-                </div>
+                {terminalConfig.mode !== 'stripe_web' ? (
+                  <div className="p-6 border-2 border-dashed rounded-lg text-center space-y-3 bg-muted/10">
+                    <div className="flex items-center justify-center gap-2">
+                      <Badge variant="secondary" className="uppercase text-[10px] font-bold tracking-wider">
+                        {terminalConfig.mode === 'dejavoo_spin'
+                          ? `Dejavoo SPIN Cloud (${terminalConfig.tpn || 'Unconfigured TPN'})`
+                          : terminalConfig.mode === 'pax_poslink'
+                          ? `PAX POSLink LAN (${terminalConfig.ipAddress || '192.168.1.210'}:${terminalConfig.port || 10009})`
+                          : 'Simulated PAX / Dejavoo Reader'}
+                      </Badge>
+                      {terminalConfig.promptTipOnTerminal && (
+                        <Badge variant="outline" className="text-[10px]">
+                          On-Screen Tip Prompt Enabled
+                        </Badge>
+                      )}
+                    </div>
+                    <Smartphone className="h-12 w-12 mx-auto text-primary" />
+                    <div>
+                      <p className="text-base font-semibold">
+                        {terminalConfig.terminalName || 'Counter Smart Terminal'}
+                      </p>
+                      <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1">
+                        Accepts EMV Chip, Contactless NFC (Apple Pay / Google Pay), and Swipe via semi-integrated terminal protocol.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 border-2 border-dashed rounded-lg text-center">
+                    <CreditCard className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium">Secure web card payment</p>
+                    <p className="text-sm text-muted-foreground">
+                      Uses the configured Stripe web payment form. This is not a card-present terminal.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              <Button
-                size="lg"
-                className="w-full mt-4"
-                onClick={processCardPayment}
-                disabled={processing}
-              >
-                {processing ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <div className="flex gap-2 mt-4">
+                {terminalConfig.mode !== 'stripe_web' ? (
+                  <>
+                    <Button
+                      size="lg"
+                      className="flex-1"
+                      onClick={() => openTerminalPrompt(remaining)}
+                      disabled={processing || remaining <= 0}
+                    >
+                      {processing ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wifi className="mr-2 h-4 w-4" />
+                      )}
+                      Send {formatCurrency(remaining, currencyConfig)} to Card Terminal
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={processCardPayment}
+                      disabled={processing || remaining <= 0}
+                    >
+                      Open Secure Card Form
+                    </Button>
+                  </>
                 ) : (
-                  <CreditCard className="mr-2 h-4 w-4" />
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={processCardPayment}
+                    disabled={processing}
+                  >
+                    {processing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CreditCard className="mr-2 h-4 w-4" />
+                    )}
+                    Open Secure Card Form
+                  </Button>
                 )}
-                Open Secure Card Form
-              </Button>
+              </div>
             </TabsContent>
 
             {/* Gift Card Payment */}
@@ -1373,6 +1619,186 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
         </CardContent>
       </Card>
 
+      {/* Card-Present Terminal Interactive / Live Dispatch Modal (Option C: PAX / Dejavoo / Simulated) */}
+      <Dialog open={Boolean(terminalSession)} onOpenChange={(open) => !open && !processing && setTerminalSession(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-primary" />
+              {terminalConfig.terminalName || 'Smart Card Terminal'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {terminalConfig.mode === 'dejavoo_spin'
+                ? `Dejavoo SPIN Cloud Relay (TPN: ${terminalConfig.tpn || 'Not Set'})`
+                : terminalConfig.mode === 'pax_poslink'
+                ? `PAX BroadPOS Local HTTP (${terminalConfig.ipAddress}:${terminalConfig.port || 10009})`
+                : 'Interactive PAX / Dejavoo Hardware Terminal Simulator'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {terminalSession && (
+            <div className="space-y-4">
+              {/* Terminal Screen Display */}
+              <div className="p-4 rounded-xl bg-zinc-950 text-white border border-zinc-800 space-y-3 text-center shadow-inner">
+                <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                  <span>{terminalSession.label || `Order #${order.orderNumber}`}</span>
+                  <span className="flex items-center gap-1 text-emerald-400">
+                    <Wifi className="h-3 w-3" />
+                    EMV / NFC READY
+                  </span>
+                </div>
+
+                <div>
+                  <div className="text-xs text-zinc-400 uppercase tracking-wider">Total to Authorize</div>
+                  <div className="text-3xl font-bold tracking-tight text-white">
+                    {formatCurrency(terminalSession.amountCents + terminalSessionTipCents, currencyConfig)}
+                  </div>
+                  {terminalSessionTipCents > 0 && (
+                    <div className="text-xs text-emerald-400 mt-0.5">
+                      Includes +{formatCurrency(terminalSessionTipCents, currencyConfig)} ({terminalTipPreset}% Tip on Terminal)
+                    </div>
+                  )}
+                </div>
+
+                {terminalConfig.promptTipOnTerminal && (
+                  <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                    <div className="text-[11px] text-zinc-400">Customer On-Screen Tip Selection</div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[0, 15, 18, 20].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => setTerminalTipPreset(pct)}
+                          className={cn(
+                            'py-1.5 px-2 rounded text-xs font-semibold border transition-colors',
+                            terminalTipPreset === pct
+                              ? 'bg-emerald-600 border-emerald-500 text-white'
+                              : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+                          )}
+                        >
+                          {pct === 0 ? 'No Tip' : `${pct}%`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="py-2 text-xs text-zinc-300 flex items-center justify-center gap-2">
+                  {processing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                      <span>Authorizing with processor...</span>
+                    </>
+                  ) : (
+                    <span>Please Tap (Apple/Google Pay/NFC), Insert Chip, or Swipe</span>
+                  )}
+                </div>
+              </div>
+
+              {terminalError && (
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive flex items-center gap-2">
+                  <XCircle className="h-4 w-4 shrink-0" />
+                  <span>{terminalError}</span>
+                </div>
+              )}
+
+              {/* Simulated Reader Action Controls or Physical Retry Controls */}
+              {terminalConfig.mode === 'simulated' ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+                      disabled={processing}
+                      onClick={() =>
+                        executeTerminalCharge({
+                          simulatedOutcome: 'approved',
+                          simulatedEntryMode: 'TAP',
+                          simulatedCardBrand: 'VISA',
+                          simulatedLast4: '4242',
+                          onTerminalTipCents: terminalSessionTipCents,
+                        })
+                      }
+                    >
+                      <Wifi className="h-3.5 w-3.5 mr-1.5" />
+                      Tap Visa (••4242)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="text-xs font-semibold"
+                      disabled={processing}
+                      onClick={() =>
+                        executeTerminalCharge({
+                          simulatedOutcome: 'approved',
+                          simulatedEntryMode: 'CHIP',
+                          simulatedCardBrand: 'MASTERCARD',
+                          simulatedLast4: '8899',
+                          onTerminalTipCents: terminalSessionTipCents,
+                        })
+                      }
+                    >
+                      <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                      Insert Chip (••8899)
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 text-xs text-destructive hover:text-destructive"
+                      disabled={processing}
+                      onClick={() =>
+                        executeTerminalCharge({
+                          simulatedOutcome: 'declined',
+                        })
+                      }
+                    >
+                      Simulate Card Decline
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-xs"
+                      disabled={processing}
+                      onClick={() => setTerminalSession(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    className="flex-1 text-xs"
+                    disabled={processing}
+                    onClick={() =>
+                      executeTerminalCharge({
+                        amountOverrideCents: terminalSession.amountCents,
+                        splitId: terminalSession.splitId,
+                        onTerminalTipCents: terminalSessionTipCents,
+                      })
+                    }
+                  >
+                    {processing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Wifi className="h-4 w-4 mr-1.5" />}
+                    {processing ? 'Waiting on Terminal...' : 'Retry Terminal Prompt'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => setTerminalSession(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(cardSession)} onOpenChange={(open) => !open && setCardSession(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1462,6 +1888,20 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Hardware & Card Terminal Configuration Modal */}
+      <HardwareSettingsModal
+        open={hardwareModalOpen}
+        onOpenChange={(open) => {
+          setHardwareModalOpen(open)
+          if (!open) {
+            const updated = loadHardwareSettings()
+            if (updated?.paymentTerminal) {
+              setTerminalConfig(updated.paymentTerminal)
+            }
+          }
+        }}
+      />
+
       {/* Success Dialog */}
       <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
         <AlertDialogContent>
@@ -1472,6 +1912,11 @@ export function PaymentClient({ orderId }: PaymentClientProps) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Order #{order.orderNumber} has been paid and completed.
+              {lastTerminalApproval && (
+                <div className="mt-3 p-3 bg-muted rounded-lg text-xs font-mono text-foreground">
+                  Approved: {lastTerminalApproval.cardBrand} (••••{lastTerminalApproval.last4}) • {lastTerminalApproval.entryMode} • Auth #{lastTerminalApproval.authCode}
+                </div>
+              )}
               {changeAmount > 0 && (
                 <div className="mt-4 p-4 bg-green-50 dark:bg-green-950 rounded-lg">
                   <p className="text-sm text-muted-foreground">Change Due</p>

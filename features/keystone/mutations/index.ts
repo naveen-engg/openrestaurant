@@ -97,6 +97,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
           paymentMethod: String!
           tipAmount: Int
           idempotencyKey: String!
+          terminalConfig: JSON
         ): ProcessPaymentResult
 
         setGiftCardStatus(giftCardId: ID!, isDisabled: Boolean!, reason: String): GiftCard
@@ -388,7 +389,12 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         paymentId: String
         clientSecret: String
         amount: Int
+        tipAmount: Int
         remainingBalance: Int
+        cardBrand: String
+        last4: String
+        entryMode: String
+        authCode: String
         error: String
       }
 

@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PlatformFilterBar } from '../../components/PlatformFilterBar'
-import { CreateItemDrawerClientWrapper } from '@/features/platform/components/CreateItemDrawerClientWrapper'
+import { CreatePaymentProviderDrawer } from '../components/drawers/CreatePaymentProviderDrawer'
 import { EditItemDrawerClientWrapper } from '@/features/platform/components/EditItemDrawerClientWrapper'
 import { useDashboard } from '../../../dashboard/context/DashboardProvider'
 import { useListItemsQuery } from '../../../dashboard/hooks/useListItems.query'
@@ -37,6 +37,7 @@ interface PaymentProviderListPageClientProps {
 }
 
 const PROVIDER_TYPE_LABELS: Record<string, string> = {
+  pp_terminal_terminal: 'PAX / Dejavoo Terminal (EMV/NFC)',
   pp_stripe_stripe: 'Stripe',
   pp_paypal_paypal: 'PayPal',
   pp_system_default: 'Manual / Cash',
@@ -224,8 +225,7 @@ export function PaymentProviderListPageClient({
         </div>
       </ScrollArea>
 
-      <CreateItemDrawerClientWrapper
-        listKey="payment-providers"
+      <CreatePaymentProviderDrawer
         open={isCreateDrawerOpen}
         onClose={() => setIsCreateDrawerOpen(false)}
         onCreate={() => window.location.reload()}

@@ -93,6 +93,55 @@ export async function seedDatabase() {
     })
   }
 
+  // 2b. Default Payment Providers (PAX / Dejavoo Smart Terminal & Cash / Manual)
+  const defaultProviders: any[] = [
+    {
+      name: 'PAX / Dejavoo Smart Terminal (EMV/NFC)',
+      code: 'pp_terminal_terminal',
+      isInstalled: true,
+      createPaymentFunction: 'terminal',
+      capturePaymentFunction: 'terminal',
+      refundPaymentFunction: 'terminal',
+      getPaymentStatusFunction: 'terminal',
+      generatePaymentLinkFunction: 'terminal',
+      handleWebhookFunction: 'terminal',
+      credentials: {
+        protocol: 'simulated',
+        terminalName: 'Counter 1 Smart Terminal',
+        ipAddress: '192.168.1.210',
+        port: 10009,
+      },
+      metadata: {
+        protocol: 'simulated',
+        promptTipOnTerminal: true,
+      },
+    },
+    {
+      name: 'In-House Cash & Manual Tender',
+      code: 'pp_system_default',
+      isInstalled: true,
+      createPaymentFunction: 'manual',
+      capturePaymentFunction: 'manual',
+      refundPaymentFunction: 'manual',
+      getPaymentStatusFunction: 'manual',
+      generatePaymentLinkFunction: 'manual',
+      handleWebhookFunction: 'manual',
+      credentials: { mode: 'cash' },
+      metadata: {},
+    },
+  ]
+
+  for (const prov of defaultProviders) {
+    const existingProv = await sudo.query.PaymentProvider.findMany({
+      where: { code: { equals: prov.code } },
+      query: 'id code',
+    }).catch(() => [])
+    if (existingProv.length === 0) {
+      console.log(`Creating Payment Provider: ${prov.name} (${prov.code})`)
+      await sudo.db.PaymentProvider.createOne({ data: prov })
+    }
+  }
+
   // 3. Kitchen Stations
   const stationsToCreate = [
     { name: 'Hot Line', displayOrder: 1 },
