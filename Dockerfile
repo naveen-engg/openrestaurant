@@ -44,6 +44,9 @@ COPY --from=builder /app/schema.prisma ./schema.prisma
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/features ./features
+COPY --from=builder /app/tests ./tests
+COPY --from=builder /app/vitest.config.mts ./vitest.config.mts
+COPY --from=builder /app/vitest.setup.ts ./vitest.setup.ts
 
 RUN sed -i 's/\r$//' /app/scripts/docker-entrypoint.sh && chmod +x /app/scripts/docker-entrypoint.sh
 
