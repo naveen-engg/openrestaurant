@@ -19,6 +19,7 @@ import {
   CalendarDays,
   BookOpen,
   Trash2,
+  Package,
 } from 'lucide-react'
 
 export interface PlatformNavItem {
@@ -51,9 +52,11 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Menu Architect', href: '/platform/menu',           color: 'green',  description: 'Unified visual workspace for menu items, categories, and modifiers.',     icon: BookOpen,     group: 'standalone' },
 
   // Inventory
-  { title: 'Ingredients',     href: '/platform/ingredients',              color: 'emerald', description: 'Manage ingredients and inventory tracking.',    icon: Boxes,    group: 'inventory' },
-  { title: 'Purchase Orders', href: '/platform/inventory/purchase-orders',color: 'blue',    description: 'Manage inventory replenishment.',               icon: FileText, group: 'inventory' },
-  { title: 'Waste Log',       href: '/platform/inventory/waste',          color: 'red',     description: 'Track food waste and loss.',                    icon: Trash2,   group: 'inventory' },
+  { title: 'Kitchen Stock (Ingredients)', href: '/platform/ingredients?realm=kitchen',  color: 'emerald', description: 'Culinary raw ingredients, stock levels, and par tracking.', icon: Boxes,       group: 'inventory' },
+  { title: 'Physical Stock & Assets',     href: '/platform/ingredients?realm=physical', color: 'indigo',  description: 'Restaurant furniture, tableware, glassware, and disposables.', icon: Package,   group: 'inventory' },
+  { title: 'Bill of Materials (BOM)',     href: '/platform/inventory/recipes',          color: 'amber',   description: 'Menu item BOM recipes, yields, and costing.',                   icon: ChefHat,     group: 'inventory' },
+  { title: 'Purchase Orders',             href: '/platform/inventory/purchase-orders',  color: 'blue',    description: 'Manage inventory replenishment and vendor deliveries.',         icon: FileText,    group: 'inventory' },
+  { title: 'Waste & Breakage Log',        href: '/platform/inventory/waste',            color: 'red',     description: 'Track food waste, plate breakage, and physical loss.',         icon: Trash2,      group: 'inventory' },
 
   // Operations
   { title: 'Operations',        href: '/platform/operations',   color: 'orange', description: 'Daily operations dashboard and performance signals.',        icon: ClipboardList, group: 'operations' },

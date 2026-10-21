@@ -93,6 +93,18 @@ interface CartItem {
   isHeld?: boolean
 }
 
+const courseColors: Record<1 | 2 | 3, string> = {
+  1: 'bg-emerald-500',
+  2: 'bg-amber-500',
+  3: 'bg-blue-500',
+}
+
+const courseLabels: Record<1 | 2 | 3, string> = {
+  1: 'C1',
+  2: 'C2',
+  3: 'C3',
+}
+
 const GET_DATA = gql`
   query GetPOSData {
     tables(where: { status: { in: ["available", "occupied"] } }, orderBy: { tableNumber: asc }) {
@@ -436,6 +448,12 @@ export function POSClient() {
     cart.length > 0 &&
     !submitting &&
     (orderType === 'takeout' || selectedTables.length > 0)
+
+  const breadcrumbs = [
+    { type: 'link' as const, label: 'Dashboard', href: '' },
+    { type: 'page' as const, label: 'Platform' },
+    { type: 'page' as const, label: 'Point of Sale' },
+  ]
 
   if (loading) {
     return (

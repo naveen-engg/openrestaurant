@@ -35,7 +35,7 @@ npx prisma migrate deploy
 
 if [ "$SEED_DATABASE" = "true" ] || [ "$SEED_DATABASE" = "1" ]; then
   echo "Seeding initial restaurant data and admin credentials..."
-  npx tsx scripts/seed.ts 2>/dev/null || echo "Seed completed or already initialized."
+  npx tsx scripts/seed.ts || echo "Seed completed or already initialized."
 else
   echo "Database verified. Skipping demo seed (set SEED_DATABASE=true to run initial seed)."
 fi

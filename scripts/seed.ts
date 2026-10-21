@@ -1,5 +1,6 @@
 import { keystoneContext } from '../features/keystone/context'
 import { syncKitchenTicketsForOrder } from '../features/keystone/utils/kitchenTicketSync'
+import { seedInventoryBOM } from '../features/keystone/utils/seedInventoryBOM'
 
 export async function seedDatabase() {
   const sudo = keystoneContext.sudo()
@@ -553,6 +554,11 @@ export async function seedDatabase() {
     await syncKitchenTicketsForOrder(order.id, keystoneContext as any)
     console.log('Sample kitchen order created and routed to tickets!')
   }
+
+  // 8. Seed Inventory Raw Ingredients and Bill of Materials (BOM) Recipes
+  console.log('Seeding Raw Ingredients and Bill of Materials (BOM) for all Menu Items...')
+  const bomResult = await seedInventoryBOM(keystoneContext)
+  console.log(`BOM Seeding complete: ${bomResult.ingredientsCreated} ingredients created (${bomResult.ingredientsExisting} existing), ${bomResult.recipesCreated} BOM recipes created (${bomResult.recipesUpdated} updated).`)
 
   console.log('--- Database Seeding Complete ---')
   console.log('Credentials:')

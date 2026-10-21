@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { gql, request } from "graphql-request";
 import { Button } from "@/components/ui/button";
-import { Plus, Edit2, Layers, ChevronRight, Utensils, Image as ImageIcon } from "lucide-react";
+import { Plus, Edit2, Layers, ChevronRight, Utensils, Image as ImageIcon, ChefHat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageBreadcrumbs } from "@/features/dashboard/components/PageBreadcrumbs";
 import { formatCurrency } from "@/features/storefront/lib/currency";
@@ -260,21 +261,28 @@ export function MenuArchitectPage() {
                       )}
 
                       {/* Action buttons */}
-                      <div className="mt-auto pt-2 border-t border-border flex items-center justify-between gap-2">
+                      <div className="mt-auto pt-2 border-t border-border flex items-center justify-between gap-1.5">
                         <button
                           type="button"
                           onClick={() => setPhotoModalItem(item)}
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                         >
                           <ImageIcon size={11} /> Photo
                         </button>
+                        <Link
+                          href="/dashboard/platform/inventory/recipes"
+                          className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+                          title="View or edit Bill of Materials (BOM) recipe"
+                        >
+                          <ChefHat size={11} /> BOM
+                        </Link>
                         <button
                           type="button"
                           onClick={() => setEditingItemId(item.id)}
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          <Edit2 size={11} /> Configure
-                          <ChevronRight size={10} className="ml-auto" />
+                          <Edit2 size={11} /> Edit
+                          <ChevronRight size={10} />
                         </button>
                       </div>
                     </div>

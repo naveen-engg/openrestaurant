@@ -15,6 +15,7 @@ import { isKitchenActiveOrderStatus, syncKitchenTicketsForOrder } from "../utils
 import { validateCartItemInput } from "../utils/cartItemValidation";
 import { appendAuditEventWithClient } from "../utils/audit";
 import { issueReceiptWithClient } from "../utils/receipt";
+import { depleteInventoryForOrder } from "../utils/inventoryLedger";
 
 interface CompleteActiveCartArgs {
   cartId: string;
@@ -339,6 +340,19 @@ export default async function completeActiveCart(
   if (!result.replay && isKitchenActiveOrderStatus(result.order.status)) {
     await syncKitchenTicketsForOrder(result.order.id, context);
   }
+
+  // Auto-update inventory on successful purchase
+  if (!result.replay && result.payment?.status === "succeeded") {
+    try {
+      await depleteInventoryForOrder(result.order.id, context, {
+        allowActive: true,
+        reason: `Auto purchase depletion for storefront order ${result.order.orderNumber}`,
+      });
+    } catch (err) {
+      console.error("Storefront purchase inventory depletion error:", err);
+    }
+  }
+
   return {
     id: result.order.id,
     orderNumber: result.order.orderNumber,

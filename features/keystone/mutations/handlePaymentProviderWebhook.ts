@@ -167,8 +167,7 @@ export default async function handlePaymentProviderWebhook(
     }, { isolationLevel: "Serializable" });
     if (
       ["payment_intent.succeeded", "charge.succeeded", "CHECKOUT.ORDER.APPROVED", "PAYMENT.CAPTURE.COMPLETED"].includes(type) &&
-      payment.order?.id &&
-      payment.order.orderSource === "pos"
+      payment.order?.id
     ) {
       await finalizePaidOrder(payment.order.id, context);
     }

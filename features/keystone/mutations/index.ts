@@ -35,6 +35,7 @@ import reconcileOrderInventory from "./reconcileOrderInventory";
 import transitionRestaurantOrder from "./transitionRestaurantOrder";
 import setGiftCardStatus from "./setGiftCardStatus";
 import { requestManagerApproval, approveManagerApproval } from "./managerApprovals";
+import { seedInventoryBOM } from "../utils/seedInventoryBOM";
 
 const graphql = String.raw;
 
@@ -328,6 +329,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         ): WasteMutationResult
 
         reconcileOrderInventory(orderId: ID!): InventoryReconciliationResult
+        seedDefaultBOMs: BOMSeedResult
 
         transferTable(
           orderId: String!
@@ -545,6 +547,16 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         breakMinutes: Int!
         error: String
       }
+
+      type BOMSeedResult {
+        success: Boolean!
+        ingredientsCreated: Int!
+        ingredientsExisting: Int!
+        recipesCreated: Int!
+        recipesUpdated: Int!
+        totalMenuItems: Int!
+        errors: [String!]
+      }
     `,
     resolvers: {
       Query: {
@@ -600,6 +612,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         recordWaste,
         reverseWaste,
         reconcileOrderInventory,
+        seedDefaultBOMs: async (_root: unknown, _args: unknown, context: any) => seedInventoryBOM(context),
         transferTable,
         combineTables,
         fireCourse,

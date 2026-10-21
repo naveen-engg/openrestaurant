@@ -43,8 +43,10 @@ export const Ingredient = list({
         { label: "Each", value: "each" },
         { label: "Case", value: "case" },
         { label: "Box", value: "box" },
+        { label: "Pack", value: "pack" },
+        { label: "Set", value: "set" },
       ],
-      defaultValue: "lb",
+      defaultValue: "each",
       validation: { isRequired: true },
       ui: {
         description: "Unit of measurement",
@@ -61,15 +63,24 @@ export const Ingredient = list({
         { label: "Beverages", value: "beverages" },
         { label: "Spices", value: "spices" },
         { label: "Seafood", value: "seafood" },
+        { label: "Furniture (Tables & Chairs)", value: "furniture" },
+        { label: "Tableware & Chinaware", value: "tableware" },
+        { label: "Glassware & Barware", value: "glassware" },
+        { label: "Paper & Disposables", value: "disposables" },
+        { label: "Kitchen Smallwares", value: "smallwares" },
         { label: "Other", value: "other" },
       ],
       ui: {
-        description: "Ingredient category",
+        description: "Ingredient or physical asset category",
       },
     }),
 
     currentStock: decimal({
-      access: { create: () => false, update: () => false },
+      access: {
+        read: () => true,
+        create: permissions.canManageInventory,
+        update: permissions.canManageInventory,
+      },
       precision: 10,
       scale: 2,
       defaultValue: "0.00",
