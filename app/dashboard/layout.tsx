@@ -4,8 +4,8 @@ import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Keystone x Next Dashboard",
-  description: "Admin interface",
+  title: "Aura Restaurant OS • Operations Hub",
+  description: "Next-generation unified restaurant management, POS, KDS, and inventory platform",
 };
 
 export default function DashboardLayout({

@@ -1,102 +1,139 @@
 /**
- * HomePage for Dashboard 2 - Server Component
- * Follows Dashboard1's server-side rendering approach
+ * HomePage for Dashboard - Server Component
+ * Queries real-time restaurant operational signals and renders the unified feature hub.
  */
 
 import React from 'react'
-import Link from 'next/link'
-import { PlusIcon, Database } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { PageContainer } from '../../components/PageContainer'
 import { getAdminMetaAction, getListCounts } from '../../actions'
-import { cn } from '@/lib/utils'
-
-interface ListCardProps {
-  list: any
-  count?: number | null
-  hideCreate?: boolean
-}
-
-function ListCard({ list, count, hideCreate = false }: ListCardProps) {
-  const isSingleton = list.isSingleton || false
-  const href = `/dashboard/${list.path}${isSingleton ? '/1' : ''}`
-
-  return (
-    <Card className={cn(
-      'relative bg-gradient-to-bl from-background to-muted/80 shadow-xs hover:bg-muted transition-colors'
-    )}>
-      <Link href={href}>
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-foreground">
-            {list.label}
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {isSingleton 
-              ? 'Singleton' 
-              : count === null || count === undefined
-                ? 'Unknown'
-                : `${count} item${count !== 1 ? 's' : ''}`
-            }
-          </p>
-        </CardContent>
-      </Link>
-      
-      {!hideCreate && !isSingleton && (
-        <Link 
-          href={`/dashboard/${list.path}/create`}
-          className="absolute top-3 right-3"
-        >
-          <Button
-            variant="outline" 
-            size="icon"
-            className="h-7 w-7"
-            title={`Add ${list.singular?.toLowerCase() || 'item'}`}
-          >
-            <PlusIcon className="h-4 w-4" />
-            <span className="sr-only">Create new {list.label}</span>
-          </Button>
-        </Link>
-      )}
-    </Card>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center p-8 text-center">
-      <Database className="h-12 w-12 text-muted-foreground mb-4" />
-      <h3 className="text-lg font-semibold mb-2">No lists configured</h3>
-      <p className="text-muted-foreground">
-        There are no data models configured in your admin interface.
-      </p>
-    </div>
-  )
-}
+import { keystoneContext } from '@/features/keystone/context'
+import { DashboardOverview, DashboardStats } from './DashboardOverview'
 
 export async function HomePage() {
-  // Fetch admin meta server-side
-  const adminMetaResponse = await getAdminMetaAction()
-  
-  if (!adminMetaResponse.success) {
-    console.error('Failed to fetch admin meta:', adminMetaResponse.error)
-    return (
-      <PageContainer 
-        title="Dashboard" 
-        header={<h1 className="text-lg font-semibold md:text-2xl">Dashboard</h1>}
-        breadcrumbs={[{ type: 'page' as const, label: 'Dashboard' }]}
-      >
-        <EmptyState />
-      </PageContainer>
-    )
+  const sudo = keystoneContext.sudo()
+
+  // Parallel server-side fetch of Keystone metadata, counts, and live restaurant operational signals
+  const [
+    adminMetaResponse,
+    orders,
+    tables,
+    reservations,
+    menuItems,
+    recipes,
+    ingredients,
+    storeSettingsList,
+    kitchenTickets,
+  ] = await Promise.all([
+    getAdminMetaAction().catch(() => ({ success: false, data: null, error: null })),
+    sudo.query.RestaurantOrder.findMany({
+      query: 'id orderNumber status total createdAt',
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }).catch(() => []),
+    sudo.query.Table.findMany({
+      query: 'id tableNumber capacity status',
+      orderBy: { tableNumber: 'asc' },
+    }).catch(() => []),
+    sudo.query.Reservation.findMany({
+      query: 'id customerName partySize reservationDate status',
+      take: 50,
+      orderBy: { reservationDate: 'asc' },
+    }).catch(() => []),
+    sudo.query.MenuItem.findMany({
+      query: 'id name available',
+    }).catch(() => []),
+    sudo.query.Recipe.findMany({
+      query: 'id name menuItem { id }',
+    }).catch(() => []),
+    sudo.query.Ingredient.findMany({
+      query: 'id name currentStock parLevel unit category',
+    }).catch(() => []),
+    sudo.query.StoreSettings.findMany({
+      query: 'id storeName currency symbol timezone',
+      take: 1,
+    }).catch(() => []),
+    sudo.query.KitchenTicket.findMany({
+      where: { status: { in: ['new', 'in_progress'] } },
+      query: 'id status',
+    }).catch(() => []),
+  ])
+
+  // Process Orders Metrics
+  const activeOrderStatuses = new Set(['open', 'sent_to_kitchen', 'in_progress', 'ready'])
+  const activeOrders = orders.filter((o: any) => activeOrderStatuses.has(o.status))
+  const completedOrders = orders.filter((o: any) => o.status === 'completed' || o.status === 'served')
+  const totalRevenueCents = orders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0)
+
+  // Process Tables Metrics
+  const totalTables = tables.length
+  const occupiedTables = tables.filter((t: any) => t.status === 'occupied').length
+  const availableTables = tables.filter((t: any) => t.status === 'available').length
+  const occupancyRate = totalTables > 0 ? Math.round((occupiedTables / totalTables) * 100) : 0
+
+  // Process Reservations Metrics
+  const confirmedReservations = reservations.filter((r: any) => r.status === 'confirmed').length
+
+  // Process Menu & BOM Metrics
+  const totalMenuItems = menuItems.length
+  const itemsWithBOM = new Set(recipes.map((r: any) => r.menuItem?.id).filter(Boolean))
+  const bomCoveragePercentage = totalMenuItems > 0 
+    ? Math.round((itemsWithBOM.size / totalMenuItems) * 100) 
+    : 100
+
+  // Process Inventory & Physical Stock Metrics
+  const physicalCategories = new Set(['furniture', 'tableware', 'glassware', 'disposables', 'smallwares'])
+  const kitchenIngredients = ingredients.filter((i: any) => !physicalCategories.has(i.category)).length
+  const physicalAssets = ingredients.filter((i: any) => physicalCategories.has(i.category)).length
+  const lowStockCount = ingredients.filter((i: any) => {
+    const stock = Number(i.currentStock || 0)
+    const par = Number(i.parLevel || 0)
+    return par > 0 && stock <= par
+  }).length
+
+  const storeSettings = storeSettingsList[0] || null
+
+  const stats: DashboardStats = {
+    orders: {
+      activeCount: activeOrders.length,
+      completedCount: completedOrders.length,
+      totalToday: orders.length,
+      totalRevenue: totalRevenueCents / 100,
+    },
+    tables: {
+      total: totalTables,
+      occupied: occupiedTables,
+      available: availableTables,
+      occupancyRate,
+    },
+    reservations: {
+      total: reservations.length,
+      confirmed: confirmedReservations,
+      upcoming: reservations.filter((r: any) => r.status === 'pending' || r.status === 'confirmed').length,
+    },
+    kds: {
+      activeTickets: kitchenTickets.length,
+    },
+    inventory: {
+      totalIngredients: ingredients.length,
+      lowStockCount,
+      bomCoveragePercentage,
+      totalMenuItems,
+      menuItemsWithBOM: itemsWithBOM.size,
+      kitchenIngredients,
+      physicalAssets,
+    },
+    storeSettings: {
+      storeName: storeSettings?.storeName || 'The Rusty Anchor Bistro',
+      currency: storeSettings?.currency || 'USD',
+      symbol: storeSettings?.symbol || '$',
+    },
   }
 
-  const adminMeta = adminMetaResponse.data
+  // Handle Keystone data lists for administrative collapsible
+  const adminMeta = adminMetaResponse.success ? adminMetaResponse.data : null
   const lists = adminMeta?.lists || []
-  // Lists are already enhanced with gqlNames from getAdminMetaAction
   const enhancedLists = lists.filter((list: any) => !list.isHidden)
 
-  // Fetch list counts server-side
   let countData: Record<string, number> = {}
   if (enhancedLists.length > 0) {
     const countResponse = await getListCounts(enhancedLists)
@@ -105,46 +142,18 @@ export async function HomePage() {
     }
   }
 
-  const header = (
-    <div className="flex flex-col">
-      <h1 className="text-lg font-semibold md:text-2xl">Dashboard</h1>
-      {enhancedLists.length > 0 && (
-        <p className="text-muted-foreground">{enhancedLists.length} Models</p>
-      )}
-    </div>
-  )
-
   const breadcrumbs = [
     { type: 'page' as const, label: 'Dashboard' }
   ]
 
-  if (enhancedLists.length === 0) {
-    return (
-      <PageContainer title="Dashboard" header={header} breadcrumbs={breadcrumbs}>
-        <EmptyState />
-      </PageContainer>
-    )
-  }
-
   return (
-    <PageContainer title="Dashboard" header={header} breadcrumbs={breadcrumbs}>
-      <div className="w-full max-w-4xl p-4 md:p-6 flex flex-col gap-4">
-        <div className="mb-4">
-          <h2 className="tracking-wide uppercase font-medium mb-2 text-muted-foreground text-sm">
-            Data Models
-          </h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 md:gap-4">
-            {enhancedLists.map((list: any) => (
-              <ListCard
-                key={list.key}
-                list={list}
-                count={countData[list.key] ?? null}
-                hideCreate={list.hideCreate ?? false}
-              />
-            ))}
-          </div>
-        </div>
+    <PageContainer title="Dashboard" breadcrumbs={breadcrumbs}>
+      <div className="w-full max-w-7xl px-4 md:px-8 py-2 md:py-4">
+        <DashboardOverview
+          stats={stats}
+          lists={enhancedLists}
+          countData={countData}
+        />
       </div>
     </PageContainer>
   )

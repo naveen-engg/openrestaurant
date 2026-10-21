@@ -47,7 +47,7 @@ export const Logo = ({
             isSidebar ? "text-[15px] leading-none" : "text-xl",
           )}
         >
-          open<span className="font-normal">front</span>
+          aura<span className="font-normal text-amber-500">OS</span>
         </span>
         <span
           className={cn(
@@ -58,7 +58,7 @@ export const Logo = ({
               : "text-[10px] tracking-wider",
           )}
         >
-          Restaurant
+          Restaurant OS
         </span>
       </div>
     </div>

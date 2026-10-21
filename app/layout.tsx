@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next x Keystone Starter",
-  description: "Next, Keystone, and Tailwind Starter Template",
+  title: "Aura Restaurant OS",
+  description: "Next-generation unified restaurant management, POS, KDS, and inventory platform.",
   icons: {
     icon: "/next-keystone-favicon.svg",
   },
