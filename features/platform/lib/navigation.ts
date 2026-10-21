@@ -20,6 +20,7 @@ import {
   BookOpen,
   Trash2,
   Package,
+  Truck,
 } from 'lucide-react'
 
 export interface PlatformNavItem {
@@ -68,6 +69,7 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Gift Cards',  href: '/platform/gift-cards',      color: 'rose', description: 'Manage gift card creation and redemption.',          icon: Gift, group: 'marketing' },
 
   // Integrations
+  { title: 'Delivery Hub',      href: '/platform/delivery',          color: 'red',    description: 'DoorDash & Uber Eats fleet dispatch, live quotes, and marketplace orders.', icon: Truck, group: 'integrations' },
   { title: 'Payment Providers', href: '/platform/payment-providers', color: 'slate',  description: 'Configure payment gateways and provider settings.', icon: CreditCard, group: 'integrations' },
   { title: 'API Keys',          href: '/platform/api-keys',          color: 'violet', description: 'Manage API keys for programmatic access.',           icon: Key,        group: 'integrations' },
 ]
