@@ -96,7 +96,9 @@ openrestaurant/
 
 ## 📦 Deployment Instructions
 
-> **Enterprise On-Premise Mini-PC Guide:** For hardware sizing, Docker `tmpfs` secret provisioning (`/run/secrets/*`), TPM 2.0 full-disk encryption, POS VLAN isolation, and automated backups, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+> **Enterprise On-Premise Mini-PC & Cloud Sync Guides:**
+> - **[DEPLOYMENT.md](DEPLOYMENT.md)**: Mini-PC hardware sizing, Docker `tmpfs` secret provisioning (`/run/secrets/*`), TPM 2.0 full-disk encryption, POS VLAN isolation, and local backups.
+> - **[CLOUD_SYNC_AND_EXECUTIVE_DASHBOARD.md](CLOUD_SYNC_AND_EXECUTIVE_DASHBOARD.md)**: Outbound mTLS sync from Mini-PC to Google Cloud SQL, AES-256 offsite backups, and Cloud Executive Dashboard SQL views.
 
 ### Option 1: Docker & Docker Compose (Recommended for Production)
 
