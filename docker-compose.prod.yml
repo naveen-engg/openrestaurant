@@ -1,0 +1,81 @@
+# ==============================================================================
+# Openfront Restaurant — Production Docker Compose (Mini-PC / Appliance)
+# ==============================================================================
+# Uses Docker tmpfs file-based secrets (/run/secrets/*) so credentials never
+# appear in `docker inspect`, process arguments, or image layers.
+#
+# Prerequisite:
+#   sudo ./scripts/provision-secrets.sh
+#
+# Run:
+#   docker compose -f docker-compose.prod.yml up -d
+# ==============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: openfront-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: openfront_restaurant
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - openfront_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: openfront-restaurant-app:latest
+    container_name: openfront-restaurant
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      SEED_DATABASE: "${SEED_DATABASE:-false}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      PORT: 3000
+    secrets:
+      - database_url
+      - session_secret
+    volumes:
+      - ./data/images:/app/public/images
+    networks:
+      - openfront_internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/dashboard/signin || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+secrets:
+  postgres_password:
+    file: ${SECRET_DIR:-/etc/openfront/secrets}/postgres_password.txt
+  database_url:
+    file: ${SECRET_DIR:-/etc/openfront/secrets}/database_url.txt
+  session_secret:
+    file: ${SECRET_DIR:-/etc/openfront/secrets}/session_secret.txt
+
+networks:
+  openfront_internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
