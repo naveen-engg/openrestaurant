@@ -96,6 +96,8 @@ openrestaurant/
 
 ## 📦 Deployment Instructions
 
+> **Enterprise On-Premise Mini-PC Guide:** For hardware sizing, Docker `tmpfs` secret provisioning (`/run/secrets/*`), TPM 2.0 full-disk encryption, POS VLAN isolation, and automated backups, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
 ### Option 1: Docker & Docker Compose (Recommended for Production)
 
 Open Restaurant provides a production-hardened multi-stage Docker build utilizing Node 22 Alpine, Next.js standalone output, and automatic database migrations.
