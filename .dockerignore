@@ -8,3 +8,7 @@ yarn-error.log*
 .DS_Store
 *.local
 tsconfig.tsbuildinfo
+Dockerfile
+docker-compose*.yml
+*.md
+tests
